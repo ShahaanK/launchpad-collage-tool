@@ -1,0 +1,15 @@
+# Exports and saved projects (may contain personal photos)
+out/*
+!out/.gitkeep
+*.collage.json
+
+# Generated dev harness outputs (rebuild with _dev/build_harness.py / run_tests.sh)
+_dev/_shots/
+_dev/_server.log
+_dev/_autotest.html
+_dev/_pure.js
+
+# Tooling
+.claude/
+.DS_Store
+Thumbs.db

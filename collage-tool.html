@@ -1,0 +1,2447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LaunchPad Collage Tool</title>
+<style>
+  /* ---- UI chrome (never part of the artboard) ---- */
+  :root{
+    --navy:#000E54; --orange:#F76900; --midblue:#203299; --lightblue:#2B72D7;
+    --ui-bg:#12141c; --ui-panel:#1a1d28; --ui-line:#2b3040; --ui-text:#e8eaf2;
+    --ui-dim:#8d95ad; --ui-font:'Sherman Sans','Helvetica Neue',Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  /* must beat .row{display:flex} and #empty{display:grid}, or the `hidden`
+     attribute silently does nothing */
+  [hidden]{display:none!important}
+  html,body{height:100%;margin:0}
+  body{
+    display:grid; grid-template-rows:auto 1fr; background:var(--ui-bg);
+    color:var(--ui-text); font:13px/1.45 var(--ui-font); overflow:hidden;
+  }
+
+  header{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:10px 16px; background:var(--ui-panel); border-bottom:1px solid var(--ui-line);
+  }
+  header .brandmark{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.02em}
+  header .brandmark i{width:10px;height:10px;border-radius:50%;background:var(--orange);display:block}
+  .spacer{flex:1}
+
+  label.f{display:flex;align-items:center;gap:6px;color:var(--ui-dim);white-space:nowrap}
+  select,input[type=text],input[type=number]{
+    font:inherit; color:var(--ui-text); background:#0d0f16;
+    border:1px solid var(--ui-line); border-radius:6px; padding:5px 7px;
+  }
+  input[type=number]{width:74px}
+  input[type=text]{width:100%}
+  select{padding-right:22px}
+  input[type=range]{width:110px;accent-color:var(--orange)}
+  input[type=color]{
+    width:30px;height:26px;padding:0;background:none;
+    border:1px solid var(--ui-line);border-radius:6px
+  }
+  button{
+    font:inherit;color:var(--ui-text);background:#232838;border:1px solid var(--ui-line);
+    border-radius:6px;padding:5px 10px;cursor:pointer
+  }
+  button:hover{background:#2c3245}
+  button.pri{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:700}
+  button.pri:hover{filter:brightness(1.08)}
+
+  main{display:grid;grid-template-columns:298px 1fr;min-height:0}
+
+  /* ---- sidebar ---- */
+  aside{
+    background:var(--ui-panel);border-right:1px solid var(--ui-line);
+    overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px
+  }
+  .grp{display:flex;flex-direction:column;gap:9px}
+  .grp > h3{
+    margin:0;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--ui-dim);font-weight:700
+  }
+  .row{display:flex;align-items:center;gap:8px;justify-content:space-between}
+  .row .f{flex:1}
+  .val{color:var(--ui-text);font-variant-numeric:tabular-nums;min-width:36px;text-align:right}
+
+  #drop{
+    border:2px dashed var(--ui-line);border-radius:10px;padding:18px 12px;text-align:center;
+    color:var(--ui-dim);cursor:pointer;transition:.15s
+  }
+  #drop:hover,#drop.hot{border-color:var(--orange);color:var(--ui-text);background:#1f2331}
+  #drop b{display:block;color:var(--ui-text);margin-bottom:3px}
+
+  #thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .th{position:relative;aspect-ratio:1;border-radius:5px;overflow:hidden;background:#0d0f16}
+  .th img{width:100%;height:100%;object-fit:cover;display:block}
+  .th .n{
+    position:absolute;left:2px;top:2px;background:rgba(0,14,84,.85);color:#fff;
+    font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px
+  }
+  .th .x{
+    position:absolute;right:1px;top:1px;width:15px;height:15px;border-radius:50%;
+    border:0;background:rgba(0,0,0,.66);color:#fff;font-size:11px;line-height:15px;
+    padding:0;cursor:pointer;opacity:0;transition:.12s
+  }
+  .th:hover .x{opacity:1}
+
+  .note{font-size:11.5px;color:var(--ui-dim);line-height:1.4}
+  .warn{
+    font-size:11.5px;color:#ffd9b8;background:rgba(247,105,0,.13);
+    border-left:2px solid var(--orange);padding:6px 8px;border-radius:0 5px 5px 0
+  }
+
+  /* ---- preview stage ---- */
+  #stage{
+    position:relative;overflow:auto;padding:26px;
+    background:
+      linear-gradient(45deg,#171a24 25%,transparent 25%,transparent 75%,#171a24 75%),
+      linear-gradient(45deg,#171a24 25%,transparent 25%,transparent 75%,#171a24 75%),
+      #14161f;
+    background-size:22px 22px;background-position:0 0,11px 11px;
+    display:grid;place-items:center
+  }
+  #frame{position:relative}
+  #sheet{
+    position:relative;transform-origin:top left;overflow:hidden;
+    box-shadow:0 10px 44px rgba(0,0,0,.62)
+  }
+  #sheet{touch-action:none}
+  #sheet .tile{position:absolute;overflow:hidden}
+  #sheet .tile img{position:absolute;display:block;max-width:none}
+  #sheet .hole{position:absolute}
+  #sheet .band,#sheet .plate,#sheet .scrim{position:absolute}
+  #sheet .layer{position:absolute;left:0;top:0;width:100%;height:100%}
+  /* The chrome layer covers the whole sheet, so it MUST be transparent to
+     pointer events or it swallows every gesture aimed at the photos beneath
+     it. Only the mark's own handles opt back in. */
+  #chrlayer{pointer-events:none}
+  #chrlayer .mgrab,#chrlayer .mrsz{pointer-events:auto}
+  /* the mark is draggable and resizable on the artboard */
+  #sheet .lockup .mgrab{position:absolute;left:0;top:0;width:100%;height:100%;cursor:move}
+  #sheet .lockup[data-drag="x"] .mgrab{cursor:ew-resize}
+  #sheet .lockup:hover .mgrab{
+    outline:calc(2px * var(--ui,1)) dashed rgba(247,105,0,.95);
+    outline-offset:calc(4px * var(--ui,1))
+  }
+  #sheet .lockup .mrsz{
+    position:absolute;right:calc(-9px * var(--ui,1));bottom:calc(-9px * var(--ui,1));
+    width:calc(18px * var(--ui,1));height:calc(18px * var(--ui,1));
+    border-radius:50%;background:#F76900;border:calc(2px * var(--ui,1)) solid #fff;
+    cursor:nwse-resize;opacity:0;transition:opacity .12s
+  }
+  #sheet .lockup:hover .mrsz{opacity:1}
+  #sheet.markmoving,#sheet.markmoving *{cursor:move!important}
+  #sheet.marksizing,#sheet.marksizing *{cursor:nwse-resize!important}
+  #sheet .lockup{position:absolute;display:block}
+
+  /* ---- interaction affordances (UI only: never drawn by the exporter) ----
+     Sized in inverse-scale units so they stay ~constant on screen whether the
+     artboard is 816px or 3744px wide. --ui is set by renderPreview to 1/scale. */
+  #sheet .tile .grip,#sheet .tile .rsz{
+    position:absolute;opacity:0;transition:opacity .12s;z-index:3;
+    background:rgba(0,14,84,.82);border:1px solid rgba(255,255,255,.5);color:#fff;
+    display:grid;place-items:center;font-weight:700;
+    width:calc(26px * var(--ui,1));height:calc(26px * var(--ui,1));
+    font-size:calc(13px * var(--ui,1));line-height:1
+  }
+  #sheet .tile .grip{
+    left:calc(6px * var(--ui,1));top:calc(6px * var(--ui,1));
+    border-radius:calc(6px * var(--ui,1));cursor:move
+  }
+  #sheet .tile .rsz{
+    right:0;bottom:0;cursor:nwse-resize;background:rgba(247,105,0,.9);
+    border-color:rgba(255,255,255,.75);
+    border-radius:calc(7px * var(--ui,1)) 0 0 0
+  }
+  #sheet .tile:hover .grip,#sheet .tile:hover .rsz{opacity:1}
+  #sheet .tile{cursor:grab}
+  #sheet.panning,#sheet.panning .tile{cursor:grabbing}
+  #sheet.spanning,#sheet.spanning .tile{cursor:nwse-resize}
+  #sheet.swapping,#sheet.swapping .tile{cursor:move}
+  #sheet .tile.src::after{
+    content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
+    outline:calc(3px * var(--ui,1)) dashed #F76900;outline-offset:calc(-3px * var(--ui,1))
+  }
+  #sheet .tile.over::after{
+    content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
+    background:rgba(247,105,0,.3);
+    outline:calc(4px * var(--ui,1)) solid #F76900;outline-offset:calc(-4px * var(--ui,1))
+  }
+  #sheet .tile .zb{
+    position:absolute;z-index:3;pointer-events:none;
+    right:calc(6px * var(--ui,1));top:calc(6px * var(--ui,1));
+    background:rgba(0,14,84,.82);color:#fff;border-radius:calc(5px * var(--ui,1));
+    padding:calc(2px * var(--ui,1)) calc(6px * var(--ui,1));
+    font-size:calc(12px * var(--ui,1));font-weight:700;line-height:1.3
+  }
+  #meta{
+    position:absolute;left:0;bottom:-21px;font-size:11px;color:var(--ui-dim);
+    font-variant-numeric:tabular-nums;white-space:nowrap
+  }
+  #hint{
+    position:absolute;right:0;bottom:-21px;font-size:11px;color:var(--orange);
+    font-weight:700;white-space:nowrap
+  }
+  #empty{
+    position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+    color:var(--ui-dim);pointer-events:none
+  }
+  #restore{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;
+    background:var(--ui-panel);border:1px solid var(--ui-line);border-radius:10px;
+    padding:16px 18px;display:flex;flex-direction:column;gap:10px;align-items:center;
+    box-shadow:0 14px 40px rgba(0,0,0,.55);text-align:center;max-width:380px
+  }
+  #restore b{font-size:14px}
+  #restore #restoremeta{color:var(--ui-dim);font-size:12px}
+  #restore .btns{display:flex;gap:8px}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brandmark"><i></i>LaunchPad Collage</span>
+
+  <label class="f">Size
+    <select id="preset"></select>
+  </label>
+  <label class="f">W <input type="number" id="aw" min="120" max="8000" step="1"></label>
+  <label class="f">H <input type="number" id="ah" min="120" max="8000" step="1"></label>
+
+  <div class="spacer"></div>
+  <span class="note" id="stepnote">LaunchPad Collage — complete</span>
+</header>
+
+<main>
+  <aside>
+    <div class="grp">
+      <h3>Photos <span id="count" style="color:var(--ui-text)"></span></h3>
+      <div id="drop"><b>Drop photos here</b>or click to choose &middot; up to 16</div>
+      <div id="thumbs"></div>
+      <div id="cap"></div>
+    </div>
+
+    <div class="grp">
+      <h3>Grid</h3>
+      <div class="row">
+        <label class="f">Template
+          <select id="template">
+            <option value="auto">Auto</option>
+            <option value="manual">Manual columns</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" id="colsrow" hidden>
+        <label class="f">Columns <input type="range" id="cols" min="1" max="16" step="1"></label>
+        <span class="val" id="colsv"></span>
+      </div>
+      <div class="note" id="gridnote"></div>
+    </div>
+
+    <div class="grp">
+      <h3>Spacing</h3>
+      <div class="row">
+        <label class="f">Gutter <input type="range" id="gutter" min="0" max="6" step="0.25"></label>
+        <span class="val" id="gutterv"></span>
+      </div>
+      <div class="row">
+        <label class="f">Outer mat <input type="range" id="outer" min="0" max="8" step="0.25"></label>
+        <span class="val" id="outerv"></span>
+      </div>
+      <div class="row">
+        <label class="f">Corner <input type="range" id="radius" min="0" max="50" step="1"></label>
+        <span class="val" id="radiusv"></span>
+      </div>
+      <div class="row">
+        <label class="f">Mat colour
+          <select id="matcolor">
+            <option value="dark">Dark</option>
+            <option value="accent">Accent</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h3>Brand mark</h3>
+      <div class="row">
+        <label class="f">Placement
+          <select id="chrome">
+            <option value="band">Band</option>
+            <option value="cell">Grid cell</option>
+            <option value="overlay">Overlay on photos</option>
+            <option value="none">None (bleed)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="row" id="siderow">
+        <label class="f">Side
+          <select id="side"><option value="bottom">Bottom</option><option value="top">Top</option></select>
+        </label>
+      </div>
+      <div class="row" id="fillrow">
+        <label class="f">Fill
+          <select id="bandfill">
+            <option value="dark">Dark</option>
+            <option value="accent">Accent</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" id="bandpctrow">
+        <label class="f">Height <input type="range" id="bandpct" min="4" max="34" step="0.5"></label>
+        <span class="val" id="bandpctv"></span>
+      </div>
+
+      <div class="row" id="cellatrow" hidden>
+        <label class="f">Cell position
+          <select id="cellat"><option value="end">End</option><option value="start">Start</option></select>
+        </label>
+      </div>
+
+      <div class="row" id="cornerrow" hidden>
+        <label class="f">Corner
+          <select id="corner">
+            <option value="bl">Bottom left</option>
+            <option value="bc">Bottom centre</option>
+            <option value="br">Bottom right</option>
+            <option value="tl">Top left</option>
+            <option value="tc">Top centre</option>
+            <option value="tr">Top right</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" id="sizerow" hidden>
+        <label class="f"><span id="marksizelbl">Mark size</span> <input type="range" id="marksize" min="12" max="70" step="1"></label>
+        <span class="val" id="marksizev"></span>
+      </div>
+      <div class="row" id="scrimrow" hidden>
+        <label class="f">Scrim <input type="range" id="scrim" min="0" max="100" step="5"></label>
+        <span class="val" id="scrimv"></span>
+      </div>
+
+      <div class="note" id="marknote"></div>
+    </div>
+
+    <div class="grp">
+      <h3>Band copy</h3>
+      <input type="text" id="headline" placeholder="Headline (optional)" maxlength="90">
+      <input type="text" id="subhead" placeholder="Subhead (optional)" maxlength="120">
+      <div class="row">
+        <label class="f">Font
+          <select id="font">
+            <option value="sherman">Sherman Sans (brand)</option>
+            <option value="helvetica">Helvetica / Arial</option>
+            <option value="georgia">Georgia (serif)</option>
+            <option value="mono">Monospace</option>
+          </select>
+        </label>
+      </div>
+      <div class="note" id="textnote"></div>
+    </div>
+
+    <div class="grp">
+      <h3>Brand palette</h3>
+      <div class="row">
+        <label class="f">Dark</label>
+        <input type="color" id="cdark"><span class="val" id="cdarkv"></span>
+      </div>
+      <div class="row">
+        <label class="f">Accent</label>
+        <input type="color" id="caccent"><span class="val" id="caccentv"></span>
+      </div>
+      <div class="row">
+        <label class="f">Light</label>
+        <input type="color" id="clight"><span class="val" id="clightv"></span>
+      </div>
+      <div class="row">
+        <label class="f">On accent
+          <select id="onaccent">
+            <option value="mono">Mono lockup</option>
+            <option value="plate">Full colour on a dark plate</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <button id="logo">Replace logo…</button>
+        <button id="brandreset">Reset brand</button>
+      </div>
+      <div class="note" id="brandnote"></div>
+    </div>
+
+    <div class="grp">
+      <h3>Arrange</h3>
+      <div class="note">
+        <b style="color:var(--ui-text)">Drag a photo</b> to reposition its crop &middot;
+        <b style="color:var(--ui-text)">scroll</b> over it to zoom &middot;
+        <b style="color:var(--ui-text)">double-click</b> to recentre.<br>
+        <b style="color:var(--ui-text)">&#10303; top-left</b> &rarr; drag onto another photo to swap.<br>
+        <b style="color:var(--ui-text)">Orange corner</b> &rarr; drag to span more columns or rows;
+        double-click it to reset.
+      </div>
+    </div>
+
+    <div class="grp">
+      <h3>Export</h3>
+      <button id="png" class="pri">Download PNG</button>
+      <div class="row">
+        <button id="html" style="flex:1">Export HTML</button>
+        <button id="pdf" style="flex:1">Print / PDF</button>
+      </div>
+      <div class="row">
+        <button id="fontfile" style="flex:1">Embed font file&hellip;</button>
+        <span class="val" id="fontfilev" style="min-width:auto"></span>
+      </div>
+      <div class="note" id="exportnote">Full artboard resolution, drawn from the original files.</div>
+    </div>
+
+    <div class="grp">
+      <h3>Session</h3>
+      <div class="row">
+        <button id="saveproj" style="flex:1">Save project</button>
+        <button id="loadproj" style="flex:1">Load project&hellip;</button>
+      </div>
+      <div class="row">
+        <label class="f">Include
+          <select id="savemode">
+            <option value="full">Photos + layout</option>
+            <option value="layout">Layout only</option>
+          </select>
+        </label>
+      </div>
+      <button id="reset">Reset layout</button>
+      <div class="note" id="savenote"></div>
+      <div class="note" id="next">Autosaves as you work. Reopen the file to pick up where you left off.</div>
+    </div>
+  </aside>
+
+  <div id="stage">
+    <div id="frame">
+      <div id="sheet"></div>
+      <div id="meta"></div>
+      <div id="hint"></div>
+    </div>
+    <div id="restore" hidden>
+      <b>Restore your last session?</b>
+      <span id="restoremeta"></span>
+      <span class="btns">
+        <button id="dorestore" class="pri">Restore</button>
+        <button id="discard">Start fresh</button>
+      </span>
+    </div>
+    <div id="empty">Drop photos in the sidebar to begin</div>
+  </div>
+</main>
+
+<script>
+/* ============================================================================
+   LaunchPad Collage Tool — step 1
+   computeLayout() + DOM preview + drop zone + size presets.
+
+   ARCHITECTURAL RULE (see SPEC.md): one layout function, three consumers.
+   computeLayout(state) returns pure geometry in ARTBOARD PIXELS. The DOM
+   preview renders it CSS-scaled; the canvas painter (step 2) renders the same
+   object at scale 1; the HTML exporter (step 6) serialises it. No consumer may
+   compute its own geometry, or they will drift and it will only show up in the
+   exported file.
+   ========================================================================= */
+
+const LOCKUP_RATIO = 690.26 / 90.09;          // 7.6618 — never stretch off this
+const LOCKUP_SVG   = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 690.26 90.09"><g><g><g><path fill="#2B72D7" d="M9.04,11.03v59.09h13.02v8.94H0V11.03h9.04Z"/><path fill="#2B72D7" d="M31.39,11.03h13.51l8.16,68.03h-8.65l-1.94-17.59h-8.75l-1.94,17.59h-8.55L31.39,11.03ZM41.69,52.43l-3.6-30.71-3.6,30.71h7.19Z"/><path fill="#2B72D7" d="M64.82,11.03v59.28l-.19-.19h8.55l-.19.19V11.03h9.04v62.58l-5.44,5.44h-15.26l-5.44-5.44V11.03h8.94Z"/><path fill="#2B72D7" d="M96.11,11.03l10.11,40.13V11.03h8.94v68.03h-8.75l-10.11-39.75v39.75h-9.04V11.03h8.84Z"/><path fill="#2B72D7" d="M120.6,73.62V16.48l5.34-5.44h15.35l5.44,5.44v16.62h-9.04v-13.31l.19.19h-8.55l.19-.19v50.53l-.19-.19h8.55l-.19.19v-13.31h9.04v16.62l-5.44,5.44h-15.35l-5.34-5.44Z"/><path fill="#2B72D7" d="M160.83,11.03v29.45h8.07V11.03h8.94v68.03h-8.94v-29.45h-8.07v29.45h-9.04V11.03h9.04Z"/><path fill="#2B72D7" d="M203.88,11.03l5.44,5.44v30.9l-5.44,5.44h-11.56v26.24h-9.04V11.03h20.6ZM200.38,43.98v-24.2l.19.19h-8.26v23.81h8.26l-.19.19Z"/><path fill="#2B72D7" d="M217.87,11.03h13.51l8.16,68.03h-8.65l-1.94-17.59h-8.75l-1.94,17.59h-8.55l8.16-68.03ZM228.17,52.43l-3.6-30.71-3.6,30.71h7.19Z"/><path fill="#2B72D7" d="M242.55,11.03h20.8l5.54,5.44v57.14l-5.54,5.44h-20.8V11.03ZM260.05,70.12l-.19.19V19.78l.19.19h-8.55v50.14h8.55Z"/></g><line fill="none" stroke="#FFFFFF" stroke-miterlimit="10" stroke-width="1.21" x1="303.42" x2="303.42" y2="90.09"/><g><g><path fill="#F76900" d="M403.65,40.06l-1.46-6.88,1.86-.67c1.15,2.53,3.4,5.73,7.51,5.73,2.57,0,5.18-1.42,5.18-4.74,0-6.33-13.4-4.98-13.4-13.01,0-4.74,3.64-7.12,7.83-7.12,2.81,0,4.39,1.23,4.9,1.86l.47-1.26h1.58l1.58,6.21-1.86.67c-1.11-2.41-3.4-5.06-6.72-5.06-2.89,0-4.23,1.7-4.23,3.84,0,5.73,13.4,4.27,13.4,12.97,0,5.85-4.98,8.07-8.94,8.07-2.29,0-4.11-.75-5.69-1.82l-.47,1.23h-1.54Z"/><path fill="#F76900" d="M427.09,48.76c-1.27.55-2.33,0-2.61-.95l3.99-7.75-6.01-13.36c-.47-1.07-.71-1.34-2.33-1.74v-1.5h7.24v1.5l-1.94.47,4.55,10.16,4.47-10.2-1.86-.44v-1.5h6.05v1.5c-.99.24-1.74.59-2.25,1.7l-6.29,13.8-3,8.3Z"/><path fill="#F76900" d="M450.1,27.25c-.16-.59-.79-1.19-1.58-1.19-1.23,0-2.49,1.07-3.32,2.1v9.92l1.98.47v1.5h-6.72v-1.5l1.58-.4v-11.35l-1.98-.55v-1.38c1.94-.32,2.89-.95,3.76-2.25l1.38.24-.2,3.56c.91-1.58,2.41-3.56,4.78-3.56,1.15,0,2.37.71,2.37,2.17,0,1.38-1.03,2.21-2.06,2.21"/><path fill="#F76900" d="M462.48,35.75v-2.89l-3.87.75c-1.03.2-2.65.79-2.65,2.57,0,1.27.91,2.37,2.69,2.37,1.9,0,3.32-1.27,3.84-2.81M467.78,38.04l.4.75c-.12.28-1.23,1.74-3.04,1.74s-2.53-1.03-2.57-2.06c-.91,1.38-2.69,2.17-4.82,2.17-3.32,0-4.82-2.17-4.82-3.95,0-2.77,1.74-4.31,4.82-4.86l4.74-.87v-3.56c0-1.42-.99-2.49-2.53-2.49s-2.25.63-2.89,1.34c.51,2.41-1.66,3.64-3.68,2.53.08-3.6,3.6-5.93,6.92-5.93,3.87,0,5.34,2.25,5.34,5.18v9.21c0,.63.4,1.11.99,1.11.55,0,.99-.2,1.15-.32"/><path fill="#F76900" d="M483.44,26.02c0,1.19-1.15,1.9-2.25,1.94-.63-1.58-1.7-2.65-3.8-2.65-2.97,0-5.3,2.49-5.3,6.72,0,3.52,2.25,5.81,5.3,5.81,2.29,0,3.95-1.07,5.1-2.53l.83.51c-.59,2.57-2.97,4.82-7.16,4.82-3.91,0-7.39-2.73-7.39-7.83,0-6.29,5.06-9.96,9.69-9.96,2.37,0,4.98.99,4.98,3.16"/><path fill="#F76900" d="M486.88,25.43l-1.98-.47v-1.5h5.14v11.74c0,1.7.83,2.61,2.37,2.61,1.19,0,3.32-.51,5.34-2.29v-10.08l-1.98-.47v-1.5h5.14v13.72h1.98v1.5c-1.3.32-2.69.87-3.76,1.74l-1.38-.24.2-2.85c-1.98,1.9-4.23,3.32-6.68,3.32s-4.39-1.7-4.39-3.91v-11.31Z"/><path fill="#F76900" d="M506.25,40.06h-.99l-.79-4.82,1.19-.28c.95,1.98,2.89,3.8,5.34,3.8,2.17,0,3.04-1.46,3.04-2.53,0-3.68-8.98-3.04-8.98-8.62,0-2.61,2.25-4.74,5.14-4.74,1.66,0,3.01.55,3.72,1.11l.16-.51h1.23l.75,4.23-1.19.28c-.51-1.15-1.82-3.2-4.31-3.2-1.74,0-2.49,1.07-2.49,2.02,0,3.36,8.9,2.53,8.9,8.38,0,3.28-2.85,5.5-6.01,5.5-1.7,0-3.64-.95-4.31-1.82l-.4,1.23Z"/><path fill="#F76900" d="M522.3,30.33l7.71-1.03c0-3.12-1.58-4.43-3.24-4.43-2.97,0-4.35,2.49-4.47,5.46M522.22,32.39c.16,3.04,2.17,5.46,4.94,5.46,2.41,0,4.07-1.07,5.3-2.89l.83.51c-.67,3.04-3.24,5.18-7.08,5.18s-7.28-2.81-7.28-7.91c0-6.92,4.15-9.88,7.99-9.88,3.6,0,6.6,2.13,6.6,7.2l-.63.95-10.68,1.38Z"/><path fill="#F76900" d="M564.89,30.61c0,6.48-3.8,10.24-10.4,10.24s-10.4-3.76-10.4-10.24v-14.47l-2.06-.43v-1.74h7.83v1.74l-2.06.43v13.96c0,5.02,2.1,8.07,7.39,8.07,4.23,0,7-2.89,7-7.83v-14.19l-2.06-.43v-1.74h6.8v1.74l-2.06.43v14.47Z"/><path fill="#F76900" d="M567.77,40.06v-1.5l1.58-.4v-11.35l-1.98-.55v-1.38c1.94-.32,2.89-.95,3.76-2.25l1.38.24-.2,3.32c1.98-1.9,4.23-3.32,6.68-3.32s4.39,1.7,4.39,3.91v11.31l1.98.47v1.5h-6.72v-1.5l1.58-.4v-9.84c0-1.7-.83-2.61-2.37-2.61-1.19,0-3.32.51-5.34,2.29v10.08l1.98.47v1.5h-6.72Z"/><path fill="#F76900" d="M591.1,15.98c1.11,0,1.98.87,1.98,1.98s-.87,1.98-1.98,1.98-1.98-.87-1.98-1.98.87-1.98,1.98-1.98M587.54,40.06v-1.5l1.78-.44v-11.31l-1.98-.55v-1.38c1.94-.32,2.89-.95,3.76-2.25l1.38.24v15.26l1.78.44v1.5h-6.72Z"/><path fill="#F76900" d="M594.7,23.45h7.24v1.5l-1.94.47,4.55,10.16,4.47-10.2-1.86-.44v-1.5h6.05v1.5c-.99.24-1.74.59-2.25,1.7l-6.29,13.8h-1.42l-6.21-13.76c-.51-1.07-.71-1.34-2.33-1.74v-1.5Z"/><path fill="#F76900" d="M616.41,30.33l7.71-1.03c0-3.12-1.58-4.43-3.24-4.43-2.97,0-4.35,2.49-4.47,5.46M616.33,32.39c.16,3.04,2.17,5.46,4.94,5.46,2.41,0,4.07-1.07,5.3-2.89l.83.51c-.67,3.04-3.24,5.18-7.08,5.18s-7.28-2.81-7.28-7.91c0-6.92,4.15-9.88,7.99-9.88,3.6,0,6.6,2.13,6.6,7.2l-.63.95-10.68,1.38Z"/><path fill="#F76900" d="M639.22,27.25c-.16-.59-.79-1.19-1.58-1.19-1.23,0-2.49,1.07-3.32,2.1v9.92l1.98.47v1.5h-6.72v-1.5l1.58-.4v-11.35l-1.98-.55v-1.38c1.94-.32,2.89-.95,3.76-2.25l1.38.24-.2,3.56c.91-1.58,2.41-3.56,4.78-3.56,1.15,0,2.37.71,2.37,2.17,0,1.38-1.03,2.21-2.06,2.21"/><path fill="#F76900" d="M643.81,40.06h-.99l-.79-4.82,1.19-.28c.95,1.98,2.89,3.8,5.34,3.8,2.17,0,3.04-1.46,3.04-2.53,0-3.68-8.97-3.04-8.97-8.62,0-2.61,2.25-4.74,5.14-4.74,1.66,0,3.01.55,3.72,1.11l.16-.51h1.23l.75,4.23-1.19.28c-.51-1.15-1.82-3.2-4.31-3.2-1.74,0-2.49,1.07-2.49,2.02,0,3.36,8.9,2.53,8.9,8.38,0,3.28-2.85,5.5-6.01,5.5-1.7,0-3.64-.95-4.31-1.82l-.4,1.23Z"/><path fill="#F76900" d="M660.06,15.98c1.11,0,1.98.87,1.98,1.98s-.87,1.98-1.98,1.98-1.98-.87-1.98-1.98.87-1.98,1.98-1.98M656.5,40.06v-1.5l1.78-.44v-11.31l-1.98-.55v-1.38c1.94-.32,2.89-.95,3.76-2.25l1.38.24v15.26l1.78.44v1.5h-6.72Z"/><path fill="#F76900" d="M666.58,37.13v-11.7h-2.57v-1.5c2.17-.4,3.6-2.37,4.35-4.51l1.38.24v3.8h4.35v1.98h-4.35v11.03c0,1.23.55,1.9,1.58,1.9.75,0,1.46-.47,1.86-.95l.83.63c-.44,1.27-1.86,2.61-3.76,2.61-2.1,0-3.68-1.23-3.68-3.52"/><path fill="#F76900" d="M678.72,48.76c-1.26.55-2.33,0-2.61-.95l3.99-7.75-6.01-13.36c-.47-1.07-1.42-1.26-2.53-1.26h-3.36v-1.98h10.79v1.5l-1.94.47,4.55,10.16,4.47-10.2-1.86-.44v-1.5h6.05v1.5c-.99.24-1.74.59-2.25,1.7l-6.29,13.8-3.01,8.3Z"/></g><g><path fill="#FFFFFF" d="M407.21,74.08h4.32c2.52,0,3.94-.1,5.94-2.97l1.26.55-1.65,4.26h-14.59v-1.42l1.68-.35v-17.75l-1.68-.35v-1.42h6.71v1.42l-2,.35v17.69Z"/><path fill="#FFFFFF" d="M419.61,75.92v-1.23l1.45-.36v-9.23l-1.61-.45v-1.13c1.58-.26,2.36-.77,3.07-1.84l1.13.19v12.46l1.45.36v1.23h-5.49ZM422.52,56.26c.9,0,1.61.71,1.61,1.61s-.71,1.61-1.61,1.61-1.61-.71-1.61-1.61.71-1.61,1.61-1.61Z"/><path fill="#FFFFFF" d="M429.83,64.01c1.1-1.23,2.78-2.13,4.68-2.13,3.2,0,5.87,2.29,5.87,6.46,0,5.68-4.1,8.07-7.29,8.07-1.87,0-3.26-.58-4.2-1.29l-.52.9-1.13-.19v-18.14l-1.61-.45v-1.13c1.58-.26,2.36-.77,3.07-1.84l1.13.19v9.55ZM429.83,65.85v7.94c.55.39,1.65.81,2.94.81,2.29,0,4.91-1.52,4.91-5.62,0-2.87-1.68-4.81-4.16-4.81-1.42,0-2.78.71-3.68,1.68Z"/><path fill="#FFFFFF" d="M449.82,65.46c-.13-.48-.65-.97-1.29-.97-1,0-2.03.87-2.71,1.71v8.1l1.61.39v1.23h-5.49v-1.23l1.29-.32v-9.26l-1.61-.45v-1.13c1.58-.26,2.36-.77,3.07-1.84l1.13.19-.16,2.91c.74-1.29,1.97-2.91,3.91-2.91.94,0,1.94.58,1.94,1.78,0,1.13-.84,1.81-1.68,1.81Z"/><path fill="#FFFFFF" d="M464.22,74.27l.32.61c-.1.23-1,1.42-2.49,1.42s-2.07-.84-2.1-1.68c-.74,1.13-2.19,1.78-3.94,1.78-2.71,0-3.94-1.78-3.94-3.23,0-2.26,1.42-3.52,3.94-3.97l3.87-.71v-2.91c0-1.16-.81-2.03-2.07-2.03s-1.84.52-2.36,1.1c.42,1.97-1.36,2.97-3,2.07.06-2.94,2.94-4.84,5.65-4.84,3.16,0,4.36,1.84,4.36,4.23v7.52c0,.52.32.9.81.9.45,0,.81-.16.94-.26ZM459.9,72.4v-2.36l-3.16.61c-.84.16-2.16.65-2.16,2.1,0,1.03.74,1.94,2.2,1.94,1.55,0,2.71-1.03,3.13-2.29Z"/><path fill="#FFFFFF" d="M473.72,65.46c-.13-.48-.65-.97-1.29-.97-1,0-2.03.87-2.71,1.71v8.1l1.61.39v1.23h-5.49v-1.23l1.29-.32v-9.26l-1.61-.45v-1.13c1.58-.26,2.36-.77,3.07-1.84l1.13.19-.16,2.91c.74-1.29,1.97-2.91,3.91-2.91.94,0,1.94.58,1.94,1.78,0,1.13-.84,1.81-1.68,1.81Z"/><path fill="#FFFFFF" d="M476.61,75.92v-1.23l1.45-.36v-9.23l-1.61-.45v-1.13c1.58-.26,2.36-.77,3.07-1.84l1.13.19v12.46l1.45.36v1.23h-5.49ZM479.52,56.26c.9,0,1.61.71,1.61,1.61s-.71,1.61-1.61,1.61-1.61-.71-1.61-1.61.71-1.61,1.61-1.61Z"/><path fill="#FFFFFF" d="M485.99,69.66c.13,2.49,1.78,4.45,4.03,4.45,1.97,0,3.32-.87,4.32-2.36l.68.42c-.55,2.49-2.65,4.23-5.78,4.23s-5.94-2.29-5.94-6.46c0-5.65,3.39-8.07,6.52-8.07,2.94,0,5.39,1.74,5.39,5.87l-.52.77-8.71,1.13ZM486.05,67.98l6.29-.84c0-2.55-1.29-3.62-2.65-3.62-2.42,0-3.55,2.03-3.65,4.45Z"/><path fill="#FFFFFF" d="M498.03,75.92h-.81l-.65-3.94.97-.23c.77,1.61,2.36,3.1,4.36,3.1,1.78,0,2.49-1.19,2.49-2.07,0-3-7.33-2.49-7.33-7.04,0-2.13,1.84-3.87,4.2-3.87,1.36,0,2.45.45,3.03.9l.13-.42h1l.61,3.45-.97.23c-.42-.94-1.48-2.61-3.52-2.61-1.42,0-2.03.87-2.03,1.65,0,2.74,7.26,2.07,7.26,6.84,0,2.68-2.32,4.49-4.91,4.49-1.39,0-2.97-.77-3.52-1.48l-.32,1Z"/></g><path fill="#F76900" d="M368.93,32.33h16.63v-12.12c-.27-.26-9.29-8.91-9.55-9.16h-30.01c-.26.26-8.97,8.9-9.24,9.16v22.23c.26.26,8.6,8.71,8.86,8.97h23.31v12.89h-15.4v-7.35h-16.77v12.12c.26.26,8.98,8.9,9.24,9.16h30.01c.26-.25,9.27-8.9,9.55-9.16v-22.22c-.26-.26-8.6-8.71-8.86-8.97h-23.17v-12.89h15.4v7.35Z"/></g></g></g></svg>`;
+const MAX_PHOTOS   = 16;
+const WARN_PHOTOS  = 12;
+const BIG_AREA     = 2700 * 3600;             // "large-format" threshold
+
+const BRAND = {
+  navy:'#000E54', orange:'#F76900', white:'#FFFFFF',
+  midblue:'#203299', lightblue:'#2B72D7',
+  font:"'Sherman Sans','Helvetica Neue',Helvetica,Arial,sans-serif"
+};
+
+const PRESETS = [
+  {g:'Social',                 id:'ig-square',    label:'Instagram square',       w:1080, h:1080},
+  {g:'Social',                 id:'ig-portrait',  label:'Instagram portrait',     w:1080, h:1350},
+  {g:'Social',                 id:'story',        label:'Story / Reel',           w:1080, h:1920},
+  {g:'Social',                 id:'li-landscape', label:'LinkedIn / X landscape', w:1200, h:627 },
+  {g:'LaunchPad signage',      id:'banner',       label:'Whiteboard banner 39×8″',w:3744, h:768 },
+  {g:'LaunchPad signage',      id:'flyer',        label:'Flyer 8.5×11″',          w:816,  h:1056},
+  {g:'Presentation / display', id:'slide',        label:'Slide 16:9',             w:1920, h:1080},
+  {g:'Presentation / display', id:'sign4k',       label:'Digital signage 4K',     w:3840, h:2160},
+  {g:'Large-format print',     id:'p1824',        label:'Poster 18×24″ @150dpi',  w:2700, h:3600},
+  {g:'Large-format print',     id:'p2436',        label:'Poster 24×36″ @150dpi',  w:3600, h:5400}
+];
+
+/* ---------------------------------------------------------------- state --- */
+
+/** The LaunchPad defaults, and what "Reset brand" restores. */
+const BRAND_PRESETS = {
+  launchpad: {
+    label: 'LaunchPad',
+    dark: BRAND.navy, accent: BRAND.orange, light: BRAND.white,
+    wordmarkLight: BRAND.midblue, wordmarkDark: BRAND.lightblue
+  }
+};
+
+const state = {
+  photos: [],   // {id,name,url,w,h,pw,ph,file,focal:{x,y},zoom,span:{c,r}}
+  artboard: {w:1080, h:1080, presetId:'ig-square'},
+  grid:  {template:'auto', cols:4},
+  space: {gutterPct:1.5, outerPct:1.5, radiusPct:0, matColor:'dark'},
+  chrome:{
+    mode:'band', side:'bottom', fill:'dark', bandPct:14, cellAt:'end',
+    corner:'bl', scrimPct:80,
+    bandMarkPct:52,   // band mode: mark height as % of band height
+    sizePct:30,       // overlay mode: mark width as % of artboard width
+    markX:50, markY:50, placed:false   // free position (% of W/H, mark centre)
+  },
+  brand: {
+    preset: 'launchpad',
+    dark: BRAND.navy, accent: BRAND.orange, light: BRAND.white,
+    wordmarkLight: BRAND.midblue, wordmarkDark: BRAND.lightblue,
+    logo: null,              // {url, ratio, name} — replaces the LaunchPad lockup
+    onAccent: 'mono',        // lockup treatment on an accent-coloured ground
+    font: BRAND.font,
+    fontFile: null           // {url,name,bytes} - optional @font-face for exported HTML
+  },
+  text: {headline: '', subhead: ''}
+};
+
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+let _uidN = 0;
+const uid = () => 'p' + (++_uidN);
+/** Keep new ids clear of ids restored from a saved session. */
+const uidFloor = n => { _uidN = Math.max(_uidN, n | 0); };
+
+/* ====================================================== LAYOUT (pure) ==== */
+
+/**
+ * Cover-crop source rect, matching `object-fit:cover` + `object-position:x% y%`
+ * semantics exactly: the image's fx% point lands on the tile's fx% point.
+ * Deliberately NOT (imgW/2 - sw/2) plus a nudge — that is the classic bug.
+ * Every consumer calls THIS, at whatever resolution it holds, so the DOM
+ * preview (downscaled) and the canvas export (original) agree by construction.
+ */
+function coverSrcRect(imgW, imgH, tileW, tileH, crop){
+  const zoom = crop && crop.zoom ? crop.zoom : 1;
+  const fx = crop ? crop.x : 50, fy = crop ? crop.y : 50;
+  const s  = Math.max(tileW/imgW, tileH/imgH) * zoom;
+  const sw = Math.min(imgW, tileW/s);
+  const sh = Math.min(imgH, tileH/s);
+  return {
+    sx: (imgW - sw) * fx/100,
+    sy: (imgH - sh) * fy/100,
+    sw, sh, s
+  };
+}
+
+/** Total grid cells the photos demand, counting a 2×2 hero as four. */
+function cellDemand(photos){
+  return photos.reduce((a, p) =>
+    a + Math.max(1, (p.span && p.span.c) || 1) * Math.max(1, (p.span && p.span.r) || 1), 0);
+}
+
+/**
+ * Column count whose resulting cell shape best matches `target` (the median
+ * aspect of the photos on the board), with a mild penalty for leftover cells.
+ *
+ * `n` is the CELL DEMAND, not the photo count: a 2×2 hero occupies four cells,
+ * and ignoring that picks far too many columns (8 photos with one hero used to
+ * give 8 columns and 5 leftover mat cells on a banner).
+ *
+ * Targeting the median photo aspect rather than a square is what keeps cropping
+ * low: 12 landscape photos on a square artboard get 3 landscape columns, 12
+ * portraits get 4 portrait ones. It also removes a real bug — with a square
+ * target, 3-vs-4 columns is an exact tie decided by ~5e-17 of float noise.
+ */
+function autoCols(n, areaW, areaH, target){
+  if(n <= 0) return 1;
+  const t = (target && isFinite(target) && target > 0) ? target : 1;
+  let best = null;
+  for(let c = 1; c <= n; c++){
+    const r = Math.ceil(n / c);
+    const cellAspect = (areaW / c) / (areaH / r);
+    const cost = Math.abs(Math.log(cellAspect / t)) + (c * r - n) * 0.15;
+    // <= with an epsilon: on a true tie prefer more columns, deterministically
+    if(!best || cost <= best.cost + 1e-12) best = {c, r, cost};
+  }
+  return best.c;
+}
+
+/** Median w/h of the photos on the board; 1 when unknown. */
+function medianAspect(photos){
+  const a = photos.map(p => (p.w > 0 && p.h > 0) ? p.w / p.h : 1).sort((x, y) => x - y);
+  if(!a.length) return 1;
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+/**
+ * Dense first-fit packer. Replaces CSS `grid-auto-flow:dense` on purpose:
+ * the DOM cannot be the source of geometry truth if the canvas painter and the
+ * HTML exporter must agree with it pixel-for-pixel, so the packing happens here
+ * in JS and every consumer is positioned absolutely from the result.
+ */
+function packTiles(items, cols){
+  const occ = [];
+  const ensure = r => { while(occ.length <= r) occ.push(new Array(cols).fill(false)); };
+  const fits = (r,c,cs,rs) => {
+    if(c + cs > cols) return false;
+    for(let i=0;i<rs;i++){ ensure(r+i); for(let j=0;j<cs;j++) if(occ[r+i][c+j]) return false; }
+    return true;
+  };
+  const mark = (r,c,cs,rs) => {
+    for(let i=0;i<rs;i++){ ensure(r+i); for(let j=0;j<cs;j++) occ[r+i][c+j] = true; }
+  };
+
+  const out = [];
+  for(const it of items){
+    const cs = clamp(it.span.c, 1, cols), rs = Math.max(1, it.span.r);
+    let done = false;
+    for(let r=0; r<4096 && !done; r++){
+      for(let c=0;c<cols;c++){
+        if(fits(r,c,cs,rs)){ mark(r,c,cs,rs); out.push({ref:it, c, r, cs, rs}); done = true; break; }
+      }
+    }
+  }
+
+  const rows = Math.max(1, occ.length);
+  const holes = [];
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) if(!occ[r] || !occ[r][c]) holes.push({r,c});
+  return {placed: out, rows, cols, holes};
+}
+
+/** Resolve a fill ROLE against the (possibly overridden) brand palette. */
+function fillOf(name, brand){
+  const b = brand || BRAND_PRESETS.launchpad;
+  return name === 'accent' ? b.accent : name === 'light' ? b.light : b.dark;
+}
+
+/** Relative luminance, to decide whether a ground counts as light or dark. */
+function luminance(hex){
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if(!m) return 0;
+  const n = parseInt(m[1], 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+/**
+ * Which lockup colourway a given ground needs.
+ *   reverse — bundled artwork: light-blue wordmark, orange Block S, white text.
+ *             Correct on navy/dark grounds.
+ *   light   — light ground. BOTH the wordmark and the white text must swap, or
+ *             the "Syracuse University Libraries" text disappears.
+ *   mono    — accent (orange) ground. brand.md defines only dark and light
+ *             variants, and on orange the artwork's own #F76900 Block S and
+ *             "Syracuse University" text vanish into the background.
+ *             Navy-on-orange is an approved combo, so the whole lockup goes dark.
+ *
+ * On an accent ground the alternative is `plate`: keep the artwork untouched and
+ * sit it on a dark panel instead. That is `brand.onAccent`.
+ */
+function lockupVariant(fillName, brand){
+  const b = brand || BRAND_PRESETS.launchpad;
+  if(fillName === 'light') return 'light';
+  if(fillName === 'accent'){
+    if(b.onAccent === 'plate') return 'reverse';   // sits on a dark plate instead
+    return 'mono';
+  }
+  // a custom "dark" role that is actually pale still needs the light treatment
+  return luminance(b.dark) > 0.5 ? 'light' : 'reverse';
+}
+
+const LOCK_ID = '__mark__';   // pseudo grid item for lockup-as-cell
+
+/** Selectable type. Sherman Sans is the brand face and is installed locally;
+ *  the others are safe fallbacks for non-LaunchPad work. */
+const FONTS = {
+  sherman:   {label: 'Sherman Sans (brand)', stack: BRAND.font},
+  helvetica: {label: 'Helvetica / Arial',    stack: "'Helvetica Neue',Helvetica,Arial,sans-serif"},
+  georgia:   {label: 'Georgia (serif)',      stack: "Georgia,'Times New Roman',serif"},
+  mono:      {label: 'Monospace',            stack: "'Consolas','SF Mono',Menlo,monospace"}
+};
+const fontKeyOf = stack => Object.keys(FONTS).find(k => FONTS[k].stack === stack) || 'sherman';
+
+/* ---------------------------------------------------------- text metrics ---
+   computeLayout() must do its own auto-fit (SPEC.md: sizing in CSS would drift
+   from the canvas), so it needs to measure text. The measurer is injectable so
+   the node tests can supply a deterministic one; in the browser it is a real
+   canvas 2d context, which is exactly what the exporter uses.
+   -------------------------------------------------------------------------- */
+/* Default is a crude, DOM-free approximation so this region stays requireable
+   from node. The browser installs a real canvas measurer via
+   setTextMeasurer() at start-up — the same 2d context the exporter uses. */
+let _measure = function(str, px, weight, font){
+  return {w: String(str).length * px * 0.5, a: px * 0.72, d: px * 0.2};
+};
+function setTextMeasurer(fn){ _measure = fn; }
+function measureText(str, px, weight, font){ return _measure(str, px, weight, font); }
+
+/**
+ * Largest integer px at which `str` fits `maxW`, plus its metrics.
+ * Integer sizes and a shrink factor make this deterministic, so the DOM and the
+ * canvas cannot land on different sizes.
+ */
+function fitText(str, maxW, maxPx, weight, font){
+  let px = Math.max(6, Math.floor(maxPx));
+  for(let i = 0; i < 48; i++){
+    const m = measureText(str, px, weight, font);
+    if(m.w <= maxW || px <= 6) return {px, w: m.w, a: m.a, d: m.d};
+    px = Math.max(6, Math.floor(px * Math.min(0.96, maxW / m.w)));
+  }
+  const m = measureText(str, px, weight, font);
+  return {px, w: m.w, a: m.a, d: m.d};
+}
+
+/** The mark being placed: the bundled LaunchPad lockup, or an uploaded logo. */
+function markSpec(st){
+  const logo = st.brand && st.brand.logo;
+  return logo && logo.url
+    ? {ratio: logo.ratio || LOCKUP_RATIO, source: 'custom', url: logo.url}
+    : {ratio: LOCKUP_RATIO, source: 'launchpad'};
+}
+
+/**
+ * THE layout function. Pure: (state) -> geometry in artboard pixels.
+ */
+function computeLayout(st){
+  const W = st.artboard.w, H = st.artboard.h;
+  const short = Math.min(W, H);
+  const b = st.brand || BRAND_PRESETS.launchpad;
+  const mark = markSpec(st);
+  const L = {artboard:{w:W, h:H}, bg:fillOf(st.space.matColor, b), band:null,
+             lockup:null, plate:null, scrim:null, textBox:null,
+             tiles:[], holes:[], text:[], grid:null};
+
+  /* band reserves a full-width strip before anything else is measured */
+  let contentY = 0, contentH = H;
+  if(st.chrome.mode === 'band'){
+    const bh = Math.round(clamp(st.chrome.bandPct/100, .04, .34) * H);
+    const by = st.chrome.side === 'top' ? 0 : H - bh;
+    L.band = {rect:{x:0, y:by, w:W, h:bh}, fill:fillOf(st.chrome.fill, b)};
+
+    const headline0 = String((st.text && st.text.headline) || '').trim();
+    const subhead0  = String((st.text && st.text.subhead)  || '').trim();
+    const hasCopy = !!(headline0 || subhead0);
+
+    /* In a band the mark is sized off the BAND height (so it reads the same on
+       a 1080 square and a 3744 banner) and may be nudged along the band.
+       With copy present the band becomes two columns: the mark is capped to its
+       own column and the copy gets the rest. Without that cap a 52%-of-band
+       mark is 858px wide on a 1080 artboard — 79% of the width — and the
+       headline is squeezed to nothing or dropped entirely. */
+    const pad = Math.round(bh * 0.16);
+    const gap = Math.round(bh * 0.22);
+    const markColW = hasCopy
+      ? Math.max(1, Math.round((W - pad * 2 - gap) * 0.42))
+      : Math.max(1, W - pad * 2);
+    let lh = Math.max(1, Math.round(clamp(st.chrome.bandMarkPct / 100, 0.2, 0.94) * bh));
+    let lw = lh * mark.ratio;
+    if(lw > markColW){ lw = markColW; lh = lw / mark.ratio; }
+    lw = Math.round(lw); lh = Math.max(1, Math.round(lh));
+    const cx = st.chrome.placed ? clamp(st.chrome.markX, 0, 100) / 100 * W
+             : hasCopy ? (W - pad - lw / 2)      // sit at the far edge of its column
+             : W / 2;
+    const lx = Math.round(clamp(cx - lw / 2, pad, Math.max(pad, W - pad - lw)));
+    const ly = Math.round(by + (bh - lh) / 2);
+    L.lockup = {rect:{x:lx, y:ly, w:lw, h:lh},
+                variant: lockupVariant(st.chrome.fill, b),
+                drag: 'x', ...mark};
+
+    /* Band copy. Auto-fit happens HERE, never in CSS, so the DOM and the canvas
+       cannot land on different sizes. `y` is the BASELINE, which is what both
+       canvas fillText and SVG <text> anchor on. */
+    const headline = headline0, subhead = subhead0;
+    if(hasCopy){
+      const font = b.font || BRAND.font;
+      const ink  = st.chrome.fill === 'light' ? b.dark : b.light;
+      /* Text takes the wider of the two gaps beside the mark, so nudging the
+         logo along the band moves the copy to the other side instead of
+         colliding with it. */
+      const leftW  = lx - pad - gap;
+      const rightW = (W - pad) - (lx + lw) - gap;
+      const useLeft = leftW >= rightW;
+      const tw = Math.max(0, useLeft ? leftW : rightW);
+      const tx = useLeft ? pad : (lx + lw + gap);
+
+      if(tw > bh * 0.5){
+        const lines = [];
+        if(headline){
+          const f = fitText(headline, tw, bh * (subhead ? 0.46 : 0.56), 700, font);
+          lines.push({str: headline, weight: 700, ...f});
+        }
+        if(subhead){
+          const capPx = headline ? lines[0].px * 0.58 : bh * 0.34;
+          const f = fitText(subhead, tw, capPx, 400, font);
+          lines.push({str: subhead, weight: 400, ...f});
+        }
+        const lead = lines.length > 1 ? Math.round(bh * 0.06) : 0;
+        const blockH = lines.reduce((a, l) => a + l.a + l.d, 0) + lead * (lines.length - 1);
+        let cursor = Math.round(by + (bh - blockH) / 2);
+        for(const l of lines){
+          L.text.push({
+            str: l.str, x: tx, y: Math.round(cursor + l.a), px: l.px,
+            weight: l.weight, align: 'left', color: ink, font
+          });
+          cursor += l.a + l.d + lead;
+        }
+        L.textBox = {x: tx, y: Math.round(by + (bh - blockH) / 2), w: tw, h: blockH};
+      }
+    }
+
+    /* On an accent ground the alternative to recolouring the artwork is to keep
+       it intact on a dark plate. Only meaningful over accent/light fills. */
+    if(st.chrome.fill !== 'dark' && b.onAccent === 'plate'){
+      const pp = Math.round(lh * 0.42);
+      L.plate = {rect:{x: lx - pp, y: ly - pp,
+                       w: Math.round(lw) + pp*2, h: Math.round(lh) + pp*2},
+                 radius: Math.round(pp * 0.5), fill: b.dark};
+    }
+
+    contentY = st.chrome.side === 'top' ? bh : 0;
+    contentH = H - bh;
+  }
+
+  /* outer mat + gutters are % of the SHORT edge, so they read the same on a
+     1080 square and a 3744-wide banner instead of exploding on the long axis */
+  const outer  = Math.round(st.space.outerPct  / 100 * short);
+  const gutter = Math.round(st.space.gutterPct / 100 * short);
+  const ax = outer, ay = contentY + outer;
+  const aw = Math.max(1, W - outer*2), ah = Math.max(1, contentH - outer*2);
+
+  const n = st.photos.length;
+  if(n === 0){ L.grid = {cols:0, rows:0}; return L; }
+
+  const asCell = st.chrome.mode === 'cell';
+  const demand = cellDemand(st.photos) + (asCell ? 1 : 0);
+  const widestSpan = st.photos.reduce((m, p) => Math.max(m, (p.span && p.span.c) || 1), 1);
+  const cols = st.grid.template === 'manual'
+    ? clamp(st.grid.cols, 1, Math.max(1, demand))
+    // never fewer columns than the widest tile needs, or its span gets clamped away
+    : Math.max(widestSpan, autoCols(demand, aw, ah, medianAspect(st.photos)));
+
+  /* Lockup-as-cell goes through the packer as a pseudo item so it occupies a
+     real cell instead of being drawn over one. It needs a wide cell (7.66:1),
+     and the required span depends on the row height, which depends on the pack
+     — so pack once with a 1-column mark to learn the row height, widen the mark
+     to something it can actually sit in, then pack for real. Two deterministic
+     passes, no iteration to convergence. */
+  const packWith = (markCols) => {
+    const item = {id: LOCK_ID, span: {c: markCols, r: 1}};
+    return packTiles(st.chrome.cellAt === 'start'
+      ? [item].concat(st.photos) : st.photos.concat([item]), cols);
+  };
+  const cwOf = () => (aw - gutter * (cols - 1)) / cols;
+
+  let placed, rows, holes, markCols = 0;
+  if(asCell){
+    const pre = packWith(1);
+    const preCh = (ah - gutter * (pre.rows - 1)) / pre.rows;
+    const cw0 = cwOf();
+    markCols = 1;
+    for(let c = 1; c <= cols; c++){
+      markCols = c;
+      if((c * cw0 + (c - 1) * gutter) / preCh >= mark.ratio * 0.5) break;
+    }
+    const out = packWith(markCols);
+    placed = out.placed; rows = out.rows; holes = out.holes;
+  }else{
+    const out = packTiles(st.photos, cols);
+    placed = out.placed; rows = out.rows; holes = out.holes;
+  }
+  L.grid = {cols, rows};
+
+  const cw = (aw - gutter * (cols - 1)) / cols;
+  const ch = (ah - gutter * (rows - 1)) / rows;
+  const radius = Math.round(st.space.radiusPct / 100 * Math.min(cw, ch));
+
+  /* Round cell BOUNDARIES once, then derive w/h from the difference between
+     them. Rounding x and w independently leaves sub-pixel seams: they vanish in
+     the scaled-down preview but print as 1px hairlines of mat colour in a
+     3744px export (measured: 2 seams across a 5-column banner). Deriving from
+     shared boundaries also makes the last column land exactly on the content
+     edge. */
+  const colX = [], colR = [], rowY = [], rowB = [];
+  for(let c = 0; c < cols; c++){
+    const o = ax + c * (cw + gutter);
+    colX[c] = Math.round(o); colR[c] = Math.round(o + cw);
+  }
+  for(let r = 0; r < rows; r++){
+    const o = ay + r * (ch + gutter);
+    rowY[r] = Math.round(o); rowB[r] = Math.round(o + ch);
+  }
+  const cellRect = (c, r, cs, rs) => {
+    const lastC = Math.min(c + cs - 1, cols - 1), lastR = Math.min(r + rs - 1, rows - 1);
+    return {x: colX[c], y: rowY[r], w: colR[lastC] - colX[c], h: rowB[lastR] - rowY[r]};
+  };
+
+  /* cell pitch, so drag-to-span can quantise a pointer position to whole
+     columns/rows without re-deriving the grid maths anywhere else */
+  L.cell = {cw, ch, gutter, pitchX: cw + gutter, pitchY: ch + gutter, ax, ay};
+
+  for(const p of placed){
+    const rect = cellRect(p.c, p.r, p.cs, p.rs);
+
+    if(p.ref.id === LOCK_ID){
+      /* the mark's cell becomes a solid panel, with the mark centred inside it */
+      L.plate = {rect, radius, fill: fillOf(st.chrome.fill, b)};
+      const pad = Math.round(Math.min(rect.w, rect.h) * 0.16);
+      let lw = Math.max(1, rect.w - pad * 2), lh = lw / mark.ratio;
+      if(lh > rect.h - pad * 2){ lh = Math.max(1, rect.h - pad * 2); lw = lh * mark.ratio; }
+      L.lockup = {
+        rect: {x: Math.round(rect.x + (rect.w - lw) / 2),
+               y: Math.round(rect.y + (rect.h - lh) / 2),
+               w: Math.round(lw), h: Math.round(lh)},
+        variant: lockupVariant(st.chrome.fill, b), ...mark
+      };
+      continue;
+    }
+
+    L.tiles.push({
+      photoId: p.ref.id, ...rect, radius,
+      crop: {x:p.ref.focal.x, y:p.ref.focal.y, zoom:p.ref.zoom},
+      cell: {c:p.c, r:p.r, cs:p.cs, rs:p.rs}
+    });
+  }
+  /* an unfilled cell is painted in the mat colour — the only choice that
+     cannot surprise at an arbitrary custom W×H (SPEC.md) */
+  for(const h of holes) L.holes.push({...cellRect(h.c, h.r, 1, 1), radius, fill:L.bg});
+
+  /* overlay: photos bleed full-frame and the mark sits in a corner over a
+     gradient scrim. brand.md sanctions exactly this ("place it on a darker
+     area, or add a subtle dark gradient/scrim behind it"). */
+  if(st.chrome.mode === 'overlay'){
+    const lw = Math.round(clamp(st.chrome.sizePct / 100, 0.12, 0.70) * W);
+    const lh = Math.max(1, Math.round(lw / mark.ratio));
+    const m  = Math.round(short * 0.038);
+    const corner = String(st.chrome.corner || 'bl');
+    let atTop = corner.charAt(0) === 't';
+    const side  = corner.charAt(1);
+    let lx, ly;
+    if(st.chrome.placed){
+      /* free placement: markX/markY are the mark CENTRE as a % of the artboard,
+         so the position survives a change of artboard size */
+      lx = Math.round(clamp(st.chrome.markX, 0, 100) / 100 * W - lw / 2);
+      ly = Math.round(clamp(st.chrome.markY, 0, 100) / 100 * H - lh / 2);
+      lx = clamp(lx, 0, Math.max(0, W - lw));
+      ly = clamp(ly, 0, Math.max(0, H - lh));
+      atTop = (ly + lh / 2) < H / 2;          // scrim follows the nearer edge
+    }else{
+      lx = side === 'l' ? m : side === 'r' ? (W - m - lw) : Math.round((W - lw) / 2);
+      ly = atTop ? m : (H - m - lh);
+    }
+    L.lockup = {rect: {x: lx, y: ly, w: lw, h: lh}, variant: 'reverse',
+                drag: 'xy', ...mark};
+
+    const alpha = clamp(st.chrome.scrimPct / 100, 0, 1) * 0.85;
+    if(alpha > 0.002){
+      /* The scrim must stay at full strength across the WHOLE mark and only
+         then fade. A plain two-stop gradient is darkest at the artboard edge
+         and already half-faded where the mark actually sits, which leaves the
+         light-blue wordmark fighting the photo underneath. */
+      const reach = (atTop ? (ly + lh) : (H - ly)) + m;   // near edge -> past the mark
+      const sh = Math.min(H, Math.max(Math.round(reach * 1.85), Math.round(reach + m)));
+      const sy = atTop ? 0 : H - sh;
+      const hold = clamp(reach / sh, 0.25, 0.85);          // plateau end
+      /* explicit gradient endpoints in artboard px: the DOM and the canvas both
+         read these numbers rather than each expressing "to top" their own way */
+      L.scrim = {
+        rect: {x: 0, y: sy, w: W, h: sh},
+        x0: 0, y0: atTop ? sy : sy + sh,          // darkest end
+        x1: 0, y1: atTop ? sy + sh : sy,          // transparent end
+        stops: [
+          [0, `rgba(0,0,0,${alpha.toFixed(3)})`],
+          [hold, `rgba(0,0,0,${(alpha * 0.86).toFixed(3)})`],
+          [1, 'rgba(0,0,0,0)']
+        ]
+      };
+    }
+  }
+
+  return L;
+}
+
+/* ============================================== DOM PREVIEW (consumer 1) == */
+
+const $ = id => document.getElementById(id);
+const sheet = $('sheet'), frame = $('frame'), stage = $('stage');
+const photoById = id => state.photos.find(p => p.id === id);
+
+/* Transient interaction state. Deliberately NOT part of `state`: it is
+   presentation only, never enters computeLayout(), and so can never leak into
+   the canvas painter or an export. */
+const ui = {mode: null, dragId: null, overId: null};
+let lastLayout = null;   // geometry of the current render, for fast crop updates
+let viewScale = 1;       // current CSS scale of the sheet
+
+function lockupMarkup(variant, brand){
+  const b = brand || BRAND_PRESETS.launchpad;
+  let svg = LOCKUP_SVG;
+  if(variant === 'light'){
+    svg = svg.replace(/#2B72D7/gi, b.wordmarkLight)  // wordmark on light ground
+             .replace(/#FFFFFF/gi, b.dark);          // ...or the Libraries text vanishes
+  }else if(variant === 'mono'){
+    svg = svg.replace(/#2B72D7/gi, b.dark)           // accent ground: the artwork's
+             .replace(/#F76900/gi, b.dark)           // own orange would disappear,
+             .replace(/#FFFFFF/gi, b.dark);          // so go mono dark-on-accent
+  }else if(b.accent !== BRAND.orange || b.wordmarkDark !== BRAND.lightblue){
+    // a re-palletted brand still wants its own accent/wordmark in the artwork
+    svg = svg.replace(/#F76900/gi, b.accent)
+             .replace(/#2B72D7/gi, b.wordmarkDark);
+  }
+  return svg;
+}
+
+/**
+ * Brand-chrome layer only: scrim, band, plate, mark. Draw order here must match
+ * the canvas painter exactly. Called on its own while the mark is being dragged
+ * or resized, since none of that reflows the photo grid.
+ */
+function renderChrome(L){
+  const layer = $('chrlayer');
+  if(!layer) return;
+  let html = '';
+
+  if(L.scrim){
+    const s = L.scrim;
+    const dir = s.y0 < s.y1 ? 'to bottom' : 'to top';
+    // stop POSITIONS are emitted explicitly so the CSS gradient and the canvas
+    // gradient are driven by the same numbers, not by two default ramps
+    const stops = s.stops.map(([at, col]) => `${col} ${(at * 100).toFixed(3)}%`).join(',');
+    html += `<div class="scrim" style="left:${s.rect.x}px;top:${s.rect.y}px;`
+          + `width:${s.rect.w}px;height:${s.rect.h}px;`
+          + `background:linear-gradient(${dir},${stops})"></div>`;
+  }
+  if(L.band){
+    const bd = L.band.rect;
+    html += `<div class="band" style="left:${bd.x}px;top:${bd.y}px;width:${bd.w}px;`
+          + `height:${bd.h}px;background:${L.band.fill}"></div>`;
+  }
+  if(L.plate){
+    const pr = L.plate.rect;
+    html += `<div class="plate" style="left:${pr.x}px;top:${pr.y}px;width:${pr.w}px;`
+          + `height:${pr.h}px;border-radius:${L.plate.radius || 0}px;`
+          + `background:${L.plate.fill}"></div>`;
+  }
+  if(L.lockup){
+    const r = L.lockup.rect;
+    const inner = L.lockup.source === 'custom'
+      ? `<img src="${L.lockup.url}" alt="" draggable="false" `
+        + `style="width:100%;height:100%;object-fit:contain;display:block">`
+      : lockupMarkup(L.lockup.variant, state.brand);
+    // .mgrab / .mrsz are UI only — the canvas painter never sees them
+    const handles = L.lockup.drag
+      ? `<span class="mgrab" title="Drag to move the logo"></span>`
+        + `<span class="mrsz" title="Drag to resize the logo"></span>`
+      : '';
+    html += `<div class="lockup"${L.lockup.drag ? ` data-drag="${L.lockup.drag}"` : ''}`
+          + ` style="left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px">`
+          + inner + handles + `</div>`;
+  }
+
+  /* Band copy is drawn as inline SVG <text>, NOT as a positioned div. SVG text
+     anchors on the baseline and on an explicit x, exactly like canvas
+     fillText — a CSS block would anchor on its box top, and the offset between
+     box top and baseline depends on font metrics, which is precisely the kind
+     of divergence the single-layout-function rule exists to prevent. */
+  if(L.text && L.text.length){
+    const ANCHOR = {left: 'start', center: 'middle', right: 'end'};
+    const W = L.artboard.w, H = L.artboard.h;
+    let t = `<svg class="copy" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"`
+          + ` style="position:absolute;left:0;top:0;overflow:visible">`;
+    for(const ln of L.text){
+      t += `<text x="${ln.x}" y="${ln.y}" fill="${ln.color}"`
+        +  ` font-family="${esc(ln.font)}" font-size="${ln.px}"`
+        +  ` font-weight="${ln.weight}" text-anchor="${ANCHOR[ln.align] || 'start'}"`
+        +  ` dominant-baseline="alphabetic" xml:space="preserve">${esc(ln.str)}</text>`;
+    }
+    html += t + `</svg>`;
+  }
+
+  layer.innerHTML = html;
+  const svg = layer.querySelector('.lockup > svg');
+  if(svg){ svg.setAttribute('width','100%'); svg.setAttribute('height','100%'); }
+}
+
+/* Install the real text measurer: a canvas 2d context, i.e. exactly what
+   paintToCanvas uses to draw the same strings. Doing it here rather than inside
+   the layout region keeps that region DOM-free and requireable from node. */
+(function installMeasurer(){
+  const mc = document.createElement('canvas').getContext('2d');
+  setTextMeasurer((str, px, weight, font) => {
+    mc.font = `${weight} ${px}px ${font}`;
+    const m = mc.measureText(String(str));
+    return {
+      w: m.width,
+      a: m.actualBoundingBoxAscent  || px * 0.72,
+      d: m.actualBoundingBoxDescent || px * 0.2
+    };
+  });
+})();
+
+/** Escape for an XML/HTML attribute or text node. */
+function esc(v){
+  return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderPreview(){
+  const L = computeLayout(state);
+  lastLayout = L;
+  const {w:W, h:H} = L.artboard;
+
+  sheet.style.width = W + 'px';
+  sheet.style.height = H + 'px';
+  sheet.style.background = L.bg;
+
+  /* scale-to-fit: the sheet stays at true artboard pixels, CSS only scales it.
+     Guard the measurement: if the stage is hidden or collapsed its clientWidth
+     is 0, which would otherwise yield a NEGATIVE scale and blank the sheet. */
+  const pad = 52;
+  const availW = Math.max(1, stage.clientWidth - pad);
+  const availH = Math.max(1, stage.clientHeight - pad);
+  const k = Math.max(0.02, Math.min(availW / W, availH / H, 1));
+  sheet.style.transform = `scale(${k})`;
+  sheet.style.setProperty('--ui', 1 / k);   // keeps handles a constant on-screen size
+  frame.style.width  = Math.round(W * k) + 'px';
+  frame.style.height = Math.round(H * k) + 'px';
+  viewScale = k;
+
+  let art = '';
+  for(const h of L.holes){
+    art += `<div class="hole" style="left:${h.x}px;top:${h.y}px;width:${h.w}px;height:${h.h}px;`
+          + `border-radius:${h.radius}px;background:${h.fill}"></div>`;
+  }
+  for(const t of L.tiles){
+    const p = photoById(t.photoId); if(!p) continue;
+    /* srcRect from the SHARED formula, at preview resolution. The img is then
+       positioned to reproduce drawImage(img, sx,sy,sw,sh, x,y,w,h) exactly —
+       parity with the canvas painter by construction, not by luck. */
+    const r = coverSrcRect(p.pw, p.ph, t.w, t.h, t.crop);
+    const cls = 'tile'
+      + (ui.dragId === p.id && ui.mode === 'swap' ? ' src' : '')
+      + (ui.overId === p.id ? ' over' : '');
+    art += `<div class="${cls}" data-id="${p.id}" style="left:${t.x}px;top:${t.y}px;`
+          + `width:${t.w}px;height:${t.h}px;border-radius:${t.radius}px">`
+          + `<img src="${p.url}" alt="" draggable="false" style="`
+          + `width:${p.pw * r.s}px;height:${p.ph * r.s}px;`
+          + `left:${-r.sx * r.s}px;top:${-r.sy * r.s}px">`
+          + `<span class="zb"${p.zoom > 1.01 ? '' : ' hidden'}>${p.zoom.toFixed(1)}×</span>`
+          + `<span class="grip" title="Drag onto another photo to swap">⠿</span>`
+          + `<span class="rsz" title="Drag to span more columns or rows"></span>`
+          + `</div>`;
+  }
+  /* Two layers: the artwork (holes + tiles) and the brand chrome. Moving or
+     resizing the mark only rebuilds the chrome layer, so dragging it does not
+     re-create sixteen <img> elements on every pointermove. */
+  sheet.innerHTML = `<div class="layer" id="artlayer">${art}</div>`
+                  + `<div class="layer" id="chrlayer"></div>`;
+  renderChrome(L);
+
+  $('empty').hidden = state.photos.length > 0;
+  scheduleSave();          // debounced; one call site so nothing can forget to save
+  $('meta').textContent =
+    `${W} × ${H} px  ·  ${Math.round(k*100)}%  ·  ${L.grid.cols}×${L.grid.rows} grid`
+    + `  ·  ${state.photos.length} photo${state.photos.length===1?'':'s'}`
+    + (L.holes.length ? `  ·  ${L.holes.length} mat cell${L.holes.length===1?'':'s'}` : '');
+
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  $('gridnote').textContent = state.photos.length
+    ? `${plural(L.grid.cols,'column')} × ${plural(L.grid.rows,'row')}`
+      + (L.holes.length
+          ? ` — ${plural(L.holes.length,'leftover cell')} filled with the mat colour.`
+          : ' — exact fit.')
+    : 'Add photos to see the grid.';
+}
+
+/* ================================================ INTERACTION (step 3) ====
+   Focal pan, wheel zoom, drag-to-swap and drag-to-span. Every gesture mutates
+   `state` and re-renders; none of them computes geometry of its own. The pan
+   fast path updates a single <img> using the SAME coverSrcRect() the exporter
+   calls, so dragging cannot introduce a preview/export divergence.
+   ========================================================================= */
+
+/** Pointer position in artboard pixels (the sheet is CSS-scaled). */
+function artboardPoint(e){
+  const r = sheet.getBoundingClientRect();
+  const k = (r.width / state.artboard.w) || 1;
+  return {x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k};
+}
+
+function tileAtPoint(x, y){
+  if(!lastLayout) return null;
+  for(const t of lastLayout.tiles){
+    if(x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h) return t;
+  }
+  return null;
+}
+
+/** Reposition one tile's image in place — no innerHTML rebuild, so a pan stays
+ *  smooth and the element (with its pointer capture) survives the whole drag. */
+function refreshTileCrop(id){
+  if(!lastLayout) return;
+  const t = lastLayout.tiles.find(v => v.photoId === id);
+  const p = photoById(id);
+  if(!t || !p) return;
+  t.crop = {x: p.focal.x, y: p.focal.y, zoom: p.zoom};
+  const el = sheet.querySelector(`.tile[data-id="${id}"]`);
+  if(!el) return;
+  const img = el.querySelector('img');
+  if(img){
+    const r = coverSrcRect(p.pw, p.ph, t.w, t.h, t.crop);
+    img.style.width  = (p.pw * r.s) + 'px';
+    img.style.height = (p.ph * r.s) + 'px';
+    img.style.left   = (-r.sx * r.s) + 'px';
+    img.style.top    = (-r.sy * r.s) + 'px';
+  }
+  const zb = el.querySelector('.zb');
+  if(zb){ zb.textContent = p.zoom.toFixed(1) + '×'; zb.hidden = !(p.zoom > 1.01); }
+}
+
+let hintTimer;
+function setHint(msg, clearAfter){
+  $('hint').textContent = msg || '';
+  clearTimeout(hintTimer);
+  if(msg && clearAfter) hintTimer = setTimeout(() => { $('hint').textContent = ''; }, clearAfter);
+}
+
+let drag = null;
+
+function beginDrag(e){
+  if(e.button !== 0) return;
+
+  /* the mark is checked first: in overlay mode it sits ON TOP of the photos, so
+     a tile hit-test would otherwise swallow the gesture */
+  const onMarkRsz = e.target.closest && e.target.closest('.mrsz');
+  const onMark    = e.target.closest && e.target.closest('.lockup');
+  if((onMarkRsz || onMark) && lastLayout && lastLayout.lockup && lastLayout.lockup.drag){
+    const r  = lastLayout.lockup.rect;
+    const pt = artboardPoint(e);
+    if(onMarkRsz){
+      drag = {mode: 'marksize', x0: pt.x, w0: r.w,
+              ratio: lastLayout.lockup.ratio || LOCKUP_RATIO,
+              bandH: lastLayout.band ? lastLayout.band.rect.h : 0};
+      sheet.classList.add('marksizing');
+      setHint('Drag to resize the logo');
+    }else{
+      drag = {mode: 'markmove', axis: lastLayout.lockup.drag,
+              dx: pt.x - (r.x + r.w / 2), dy: pt.y - (r.y + r.h / 2)};
+      sheet.classList.add('markmoving');
+      setHint(lastLayout.lockup.drag === 'x'
+        ? 'Drag along the band' : 'Drag to place the logo');
+    }
+    ui.mode = drag.mode;
+    try{ sheet.setPointerCapture(e.pointerId); }catch(err){}
+    e.preventDefault();
+    return;
+  }
+
+  if(!state.photos.length) return;
+  const el = e.target.closest && e.target.closest('.tile');
+  if(!el) return;
+  const id = el.dataset.id;
+  const p = photoById(id);
+  const t = lastLayout && lastLayout.tiles.find(v => v.photoId === id);
+  if(!p || !t) return;
+
+  const pt = artboardPoint(e);
+  const onGrip = !!e.target.closest('.grip');
+  const onRsz  = !!e.target.closest('.rsz');
+
+  if(onRsz){
+    /* Anchor to the tile origin and cell pitch captured NOW. Recomputing them
+       each move would oscillate: growing a span can reflow the grid, which
+       moves the tile and changes the pitch, which changes the span again. */
+    drag = {mode: 'span', id, ax: t.x, ay: t.y,
+            pitchX: lastLayout.cell.pitchX, pitchY: lastLayout.cell.pitchY,
+            gutter: lastLayout.cell.gutter, cols: lastLayout.grid.cols};
+    sheet.classList.add('spanning');
+  }else if(onGrip){
+    drag = {mode: 'swap', id};
+    ui.mode = 'swap'; ui.dragId = id; ui.overId = null;
+    sheet.classList.add('swapping');
+    renderPreview();
+    setHint('Drag onto another photo to swap');
+  }else{
+    /* sw/sh depend only on tile size and zoom, so the slack and the cover scale
+       are constant for the whole gesture — measure them once. */
+    const r = coverSrcRect(p.pw, p.ph, t.w, t.h,
+                           {x: p.focal.x, y: p.focal.y, zoom: p.zoom});
+    drag = {mode: 'pan', id, x0: pt.x, y0: pt.y, fx0: p.focal.x, fy0: p.focal.y,
+            slackX: p.pw - r.sw, slackY: p.ph - r.sh, s: r.s};
+    sheet.classList.add('panning');
+    if(drag.slackX < 0.5 && drag.slackY < 0.5){
+      setHint('This photo already fits — nothing to pan. Scroll to zoom in first.', 2600);
+    }
+  }
+  ui.mode = drag.mode;
+  // capture keeps the gesture alive while renderPreview() replaces the tile
+  // elements underneath it; if it is unavailable the delegated listeners on
+  // #sheet still work, so a failure here must not abort the drag
+  try{ sheet.setPointerCapture(e.pointerId); }catch(err){}
+  e.preventDefault();
+}
+
+function moveDrag(e){
+  if(!drag) return;
+  const pt = artboardPoint(e);
+
+  /* Mark move/resize never reflows the photo grid, so only the chrome layer is
+     rebuilt — dragging the logo does not re-create every <img>. */
+  if(drag.mode === 'markmove'){
+    const W = state.artboard.w, H = state.artboard.h;
+    state.chrome.placed = true;
+    state.chrome.markX = clamp((pt.x - drag.dx) / W * 100, 0, 100);
+    if(drag.axis === 'xy'){
+      state.chrome.markY = clamp((pt.y - drag.dy) / H * 100, 0, 100);
+    }
+    lastLayout = computeLayout(state);
+    renderChrome(lastLayout);
+    setHint(drag.axis === 'xy'
+      ? `Logo at ${Math.round(state.chrome.markX)}% / ${Math.round(state.chrome.markY)}%`
+      : `Logo at ${Math.round(state.chrome.markX)}%`);
+    return;
+  }
+
+  if(drag.mode === 'marksize'){
+    // absolute from the width captured at pointerdown, so it cannot compound
+    const targetW = Math.max(8, drag.w0 + (pt.x - drag.x0));
+    if(state.chrome.mode === 'overlay'){
+      state.chrome.sizePct = clamp(targetW / state.artboard.w * 100, 12, 70);
+      setHint(`Logo width ${state.chrome.sizePct.toFixed(0)}% of the artboard`);
+    }else if(drag.bandH > 0){
+      state.chrome.bandMarkPct = clamp(targetW / drag.ratio / drag.bandH * 100, 20, 94);
+      setHint(`Logo height ${state.chrome.bandMarkPct.toFixed(0)}% of the band`);
+    }
+    lastLayout = computeLayout(state);
+    renderChrome(lastLayout);
+    return;
+  }
+
+  if(drag.mode === 'pan'){
+    const p = photoById(drag.id);
+    if(!p) return;
+    /* Dragging right should move the image content right, i.e. reveal more of
+       its left edge — so sx decreases and the focal percentage decreases. */
+    if(drag.slackX > 0.5){
+      p.focal.x = clamp(drag.fx0 - (pt.x - drag.x0) / (drag.s * drag.slackX) * 100, 0, 100);
+    }
+    if(drag.slackY > 0.5){
+      p.focal.y = clamp(drag.fy0 - (pt.y - drag.y0) / (drag.s * drag.slackY) * 100, 0, 100);
+    }
+    refreshTileCrop(drag.id);
+    if(drag.slackX > 0.5 || drag.slackY > 0.5){
+      setHint(`Focal ${Math.round(p.focal.x)}% / ${Math.round(p.focal.y)}%`);
+    }
+
+  }else if(drag.mode === 'span'){
+    const p = photoById(drag.id);
+    if(!p) return;
+    const cs = clamp(Math.round((pt.x - drag.ax + drag.gutter) / drag.pitchX), 1, drag.cols);
+    const rs = clamp(Math.round((pt.y - drag.ay + drag.gutter) / drag.pitchY), 1, 6);
+    if(p.span.c !== cs || p.span.r !== rs){
+      p.span = {c: cs, r: rs};
+      renderPreview();
+      setHint(`Span ${cs} × ${rs}`);
+    }
+
+  }else if(drag.mode === 'swap'){
+    const over = tileAtPoint(pt.x, pt.y);
+    const overId = (over && over.photoId !== drag.id) ? over.photoId : null;
+    if(overId !== ui.overId){
+      ui.overId = overId;
+      renderPreview();
+      setHint(overId ? 'Release to swap these two' : 'Drag onto another photo to swap');
+    }
+  }
+}
+
+function endDrag(e){
+  if(!drag) return;
+
+  if(drag.mode === 'swap' && ui.overId){
+    const a = state.photos.findIndex(p => p.id === drag.id);
+    const b = state.photos.findIndex(p => p.id === ui.overId);
+    if(a >= 0 && b >= 0 && a !== b){
+      /* Spans belong to the SLOT, not the picture: swapping should trade the two
+         photos without reshaping the collage, so put each span back where it
+         was after exchanging the array positions. */
+      const spanA = state.photos[a].span, spanB = state.photos[b].span;
+      const tmp = state.photos[a];
+      state.photos[a] = state.photos[b];
+      state.photos[b] = tmp;
+      state.photos[a].span = spanA;
+      state.photos[b].span = spanB;
+      setHint('Swapped', 1400);
+      renderThumbs();
+    }
+  }else if(drag.mode === 'markmove' || drag.mode === 'marksize'){
+    syncControls();          // the sliders must catch up with the drag
+    setHint('', 1200);
+  }else if(drag.mode === 'pan' || drag.mode === 'span'){
+    setHint('', 1);
+  }
+
+  ui.mode = null; ui.dragId = null; ui.overId = null;
+  sheet.classList.remove('panning', 'spanning', 'swapping', 'markmoving', 'marksizing');
+  try{ sheet.releasePointerCapture(e.pointerId); }catch(err){}
+  drag = null;
+  renderPreview();
+}
+
+function wireInteraction(){
+  sheet.addEventListener('pointerdown', beginDrag);
+  sheet.addEventListener('pointermove', moveDrag);
+  sheet.addEventListener('pointerup', endDrag);
+  sheet.addEventListener('pointercancel', endDrag);
+
+  sheet.addEventListener('wheel', e => {
+    if(e.target.closest && e.target.closest('.lockup')) return;
+    const el = e.target.closest && e.target.closest('.tile');
+    if(!el) return;
+    const p = photoById(el.dataset.id);
+    if(!p) return;
+    e.preventDefault();                       // don't scroll the stage instead
+    const next = clamp(p.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 1, 5);
+    if(Math.abs(next - p.zoom) < 1e-4) return;
+    p.zoom = next;
+    refreshTileCrop(p.id);
+    setHint(`Zoom ${p.zoom.toFixed(2)}× — drag to reposition`, 1800);
+  }, {passive: false});
+
+  sheet.addEventListener('dblclick', e => {
+    if(e.target.closest && e.target.closest('.lockup')){
+      state.chrome.placed = false;
+      state.chrome.markX = 50; state.chrome.markY = 50;
+      state.chrome.sizePct = 30; state.chrome.bandMarkPct = 52;
+      syncControls();
+      renderPreview();
+      setHint('Logo position and size reset', 1600);
+      return;
+    }
+    const el = e.target.closest && e.target.closest('.tile');
+    if(!el) return;
+    const p = photoById(el.dataset.id);
+    if(!p) return;
+    if(e.target.closest('.rsz')){
+      p.span = {c: 1, r: 1};
+      setHint('Span reset to 1 × 1', 1600);
+    }else{
+      p.focal = {x: 50, y: 50};
+      p.zoom = 1;
+      setHint('Crop reset to centre', 1600);
+    }
+    renderPreview();
+  });
+}
+
+/* ============================================ CANVAS PAINTER (consumer 2) ==
+   Renders the SAME computeLayout() object at scale 1. It must not compute any
+   geometry of its own: every rect here comes from the layout object, and every
+   crop comes from the shared coverSrcRect(). The only thing this file does that
+   the DOM does not is rasterise — so that is the only thing the parity test has
+   to police.
+   ========================================================================= */
+
+const loadImage = src => new Promise((res, rej) => {
+  const i = new Image();
+  i.onload = () => res(i);
+  i.onerror = () => rej(new Error('image failed: ' + String(src).slice(0, 80)));
+  i.src = src;
+});
+
+/** Rasterise the inline lockup at an exact pixel size. A data: URI does not
+ *  taint the canvas, so toBlob/toDataURL still work afterwards. */
+function lockupImage(variant, w, h){
+  const svg = lockupMarkup(variant, state.brand)
+    .replace('<svg', `<svg width="${w}" height="${h}"`);
+  return loadImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg));
+}
+
+function roundRectPath(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  const rr = Math.max(0, Math.min(r || 0, w / 2, h / 2));
+  if(!rr){ ctx.rect(x, y, w, h); return; }
+  if(ctx.roundRect){ ctx.roundRect(x, y, w, h, rr); return; }
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x,     y + h, rr);
+  ctx.arcTo(x,     y + h, x,     y,     rr);
+  ctx.arcTo(x,     y,     x + w, y,     rr);
+  ctx.closePath();
+}
+
+/** Full-resolution source for export; the downscaled preview otherwise. */
+async function tileSource(p, hiRes){
+  if(hiRes && p.file){
+    const bmp = await createImageBitmap(p.file);
+    return {img: bmp, w: bmp.width, h: bmp.height, release: () => bmp.close && bmp.close()};
+  }
+  const img = await loadImage(p.url);
+  return {img, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height,
+          release: () => {}};
+}
+
+/**
+ * Paint the artboard at true pixel size.
+ * @param {object} st    tool state
+ * @param {object} opts  {hiRes:boolean, onProgress:(done,total)=>void}
+ */
+async function paintToCanvas(st, opts){
+  const o = opts || {};
+  const L = computeLayout(st);
+  const cv = document.createElement('canvas');
+  cv.width = L.artboard.w;
+  cv.height = L.artboard.h;
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  ctx.fillStyle = L.bg;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  for(const h of L.holes){
+    roundRectPath(ctx, h.x, h.y, h.w, h.h, h.radius);
+    ctx.fillStyle = h.fill;
+    ctx.fill();
+  }
+
+  const total = L.tiles.length;
+  let done = 0;
+  for(const t of L.tiles){
+    const p = photoById(t.photoId);
+    if(!p) continue;
+    let src = null;
+    try{
+      src = await tileSource(p, o.hiRes);
+      const r = coverSrcRect(src.w, src.h, t.w, t.h, t.crop);
+      ctx.save();
+      roundRectPath(ctx, t.x, t.y, t.w, t.h, t.radius);
+      ctx.clip();
+      ctx.drawImage(src.img, r.sx, r.sy, r.sw, r.sh, t.x, t.y, t.w, t.h);
+      ctx.restore();
+    }catch(e){
+      console.error('[collage] tile paint failed', p.name, e);
+    }finally{
+      // decode -> draw -> release, one tile at a time: 16 print-res originals
+      // held simultaneously is what makes a poster export fall over
+      if(src) src.release();
+    }
+    if(o.onProgress) o.onProgress(++done, total);
+  }
+
+  /* same draw order as the DOM renderer: scrim -> band -> plate -> mark */
+  if(L.scrim){
+    const s = L.scrim;
+    const g = ctx.createLinearGradient(s.x0, s.y0, s.x1, s.y1);
+    for(const [at, col] of s.stops) g.addColorStop(at, col);
+    ctx.fillStyle = g;
+    ctx.fillRect(s.rect.x, s.rect.y, s.rect.w, s.rect.h);
+  }
+  if(L.band){
+    const bd = L.band.rect;
+    ctx.fillStyle = L.band.fill;
+    ctx.fillRect(bd.x, bd.y, bd.w, bd.h);
+  }
+  if(L.plate){
+    roundRectPath(ctx, L.plate.rect.x, L.plate.rect.y,
+                  L.plate.rect.w, L.plate.rect.h, L.plate.radius || 0);
+    ctx.fillStyle = L.plate.fill;
+    ctx.fill();
+  }
+  if(L.lockup){
+    const r = L.lockup.rect;
+    try{
+      const img = L.lockup.source === 'custom'
+        ? await loadImage(L.lockup.url)
+        : await lockupImage(L.lockup.variant, r.w, r.h);
+      if(L.lockup.source === 'custom'){
+        // object-fit:contain, reproduced so the DOM and the canvas agree
+        const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+        const s = Math.min(r.w / iw, r.h / ih);
+        const dw = iw * s, dh = ih * s;
+        ctx.drawImage(img, r.x + (r.w - dw) / 2, r.y + (r.h - dh) / 2, dw, dh);
+      }else{
+        ctx.drawImage(img, r.x, r.y, r.w, r.h);
+      }
+    }catch(e){ console.error('[collage] mark paint failed', e); }
+  }
+
+  /* Band copy last, on top of the band. Same baseline and same x anchor the
+     SVG <text> uses, so the two cannot disagree about placement. */
+  if(L.text && L.text.length){
+    ctx.textBaseline = 'alphabetic';
+    for(const ln of L.text){
+      ctx.font = `${ln.weight} ${ln.px}px ${ln.font}`;
+      ctx.textAlign = ln.align;
+      ctx.fillStyle = ln.color;
+      ctx.fillText(ln.str, ln.x, ln.y);
+    }
+  }
+
+  return cv;
+}
+
+function artboardLabel(st){
+  const p = PRESETS.find(x => x.id === st.artboard.presetId);
+  const base = p ? p.id : 'custom';
+  return `launchpad-collage_${base}_${st.artboard.w}x${st.artboard.h}`;
+}
+
+async function exportPNG(){
+  if(!state.photos.length){ setExportStatus('Add photos first.'); return; }
+  const btn = $('png');
+  btn.disabled = true;
+  const t0 = performance.now();
+  try{
+    setExportStatus('Decoding originals…');
+    const cv = await paintToCanvas(state, {
+      hiRes: true,
+      onProgress: (d, n) => setExportStatus(`Painting tile ${d} of ${n}…`)
+    });
+    setExportStatus('Encoding PNG…');
+    const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+    if(!blob) throw new Error('toBlob returned null (canvas too large?)');
+    downloadBlob(blob, artboardLabel(state) + '.png');
+    const mb = (blob.size / 1048576).toFixed(1);
+    setExportStatus(`Saved ${cv.width}×${cv.height} · ${mb} MB · ${Math.round(performance.now()-t0)} ms`);
+  }catch(e){
+    console.error('[collage] export failed', e);
+    setExportStatus('Export failed — see console.');
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function setExportStatus(msg){ $('exportnote').textContent = msg || ''; }
+
+/* ======================================== HTML EXPORTER (consumer 3) ======
+   Serialises the SAME computeLayout() object into a self-contained fixed-px
+   sheet in the house format (inline CSS, base64 images, inline SVG lockup,
+   print-color-adjust:exact) — the shape `html-poster-render` already batches.
+
+   Each tile is pre-cropped to its own pixel size, so the exported markup needs
+   no cropping logic at all: the crop is baked by the SAME coverSrcRect() the
+   preview and the canvas use. A third place to get object-fit wrong simply
+   does not exist.
+   ========================================================================= */
+
+/** Crop+scale one photo to exactly its tile, as a data URI. */
+async function tileDataURL(p, t){
+  const src = await tileSource(p, true);          // decode the ORIGINAL
+  try{
+    const r = coverSrcRect(src.w, src.h, t.w, t.h, t.crop);
+    /* Use spare source resolution up to 2x, never upscale: a 1x embed prints
+       soft, and a blanket 2x bloats the file for photos that have no extra
+       pixels to give. */
+    const k = clamp(Math.min(r.sw / Math.max(1, t.w), 2), 1, 2);
+    const ow = Math.max(1, Math.round(t.w * k)), oh = Math.max(1, Math.round(t.h * k));
+    const c = document.createElement('canvas');
+    c.width = ow; c.height = oh;
+    const x = c.getContext('2d');
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(src.img, r.sx, r.sy, r.sw, r.sh, 0, 0, ow, oh);
+    return c.toDataURL('image/jpeg', 0.9);        // JPEG: PNG photos are enormous
+  }finally{
+    src.release();
+  }
+}
+
+async function buildExportHTML(st, opts){
+  const o = opts || {};
+  const L = computeLayout(st);
+  const {w: W, h: H} = L.artboard;
+  const px = n => Math.round(n) + 'px';
+  let body = '';
+
+  for(const h of L.holes){
+    body += `<div style="left:${px(h.x)};top:${px(h.y)};width:${px(h.w)};height:${px(h.h)};`
+          + `border-radius:${px(h.radius)};background:${h.fill}"></div>`;
+  }
+
+  let done = 0;
+  for(const t of L.tiles){
+    const p = photoById(t.photoId);
+    if(!p) continue;
+    let uri;
+    try{ uri = await tileDataURL(p, t); }
+    catch(e){ console.error('[collage] export tile failed', p.name, e); continue; }
+    body += `<img src="${uri}" alt="" style="left:${px(t.x)};top:${px(t.y)};`
+          + `width:${px(t.w)};height:${px(t.h)};border-radius:${px(t.radius)}">`;
+    if(o.onProgress) o.onProgress(++done, L.tiles.length);
+  }
+
+  if(L.scrim){
+    const s = L.scrim;
+    const dir = s.y0 < s.y1 ? 'to bottom' : 'to top';
+    const stops = s.stops.map(([at, col]) => `${col} ${(at * 100).toFixed(3)}%`).join(',');
+    body += `<div style="left:${px(s.rect.x)};top:${px(s.rect.y)};width:${px(s.rect.w)};`
+          + `height:${px(s.rect.h)};background:linear-gradient(${dir},${stops})"></div>`;
+  }
+  if(L.band){
+    const b = L.band.rect;
+    body += `<div style="left:${px(b.x)};top:${px(b.y)};width:${px(b.w)};height:${px(b.h)};`
+          + `background:${L.band.fill}"></div>`;
+  }
+  if(L.plate){
+    const r = L.plate.rect;
+    body += `<div style="left:${px(r.x)};top:${px(r.y)};width:${px(r.w)};height:${px(r.h)};`
+          + `border-radius:${px(L.plate.radius || 0)};background:${L.plate.fill}"></div>`;
+  }
+  if(L.lockup){
+    const r = L.lockup.rect;
+    const inner = L.lockup.source === 'custom'
+      ? `<img src="${L.lockup.url}" alt="" style="position:static;width:100%;height:100%;`
+        + `object-fit:contain;display:block">`
+      : lockupMarkup(L.lockup.variant, st.brand)
+          .replace('<svg', `<svg width="100%" height="100%" style="position:static"`);
+    body += `<div style="left:${px(r.x)};top:${px(r.y)};width:${px(r.w)};height:${px(r.h)}">`
+          + inner + `</div>`;
+  }
+  if(L.text && L.text.length){
+    const ANCHOR = {left: 'start', center: 'middle', right: 'end'};
+    body += `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="left:0;top:0;overflow:visible">`;
+    for(const ln of L.text){
+      body += `<text x="${ln.x}" y="${ln.y}" fill="${ln.color}" font-family="${esc(ln.font)}"`
+            + ` font-size="${ln.px}" font-weight="${ln.weight}"`
+            + ` text-anchor="${ANCHOR[ln.align] || 'start'}"`
+            + ` dominant-baseline="alphabetic" xml:space="preserve">${esc(ln.str)}</text>`;
+    }
+    body += `</svg>`;
+  }
+
+  const ff = st.brand.fontFile;
+  const fontFace = ff
+    ? `@font-face{font-family:'Sherman Sans';src:url(${ff.url});font-weight:400 900;font-display:block}\n`
+    : '';
+  const title = artboardLabel(st);
+
+  /* @page is written with the artboard's own size so "Save as PDF" with margins
+     None produces the exact trim size. It is generated per export rather than
+     sitting in a static stylesheet, because it has to track the artboard. */
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>${esc(title)}</title>
+<style>
+${fontFace}@page{size:${W}px ${H}px;margin:0}
+html,body{margin:0;padding:0;background:#f2f3f7}
+.sheet{
+  position:relative;width:${W}px;height:${H}px;overflow:hidden;background:${L.bg};
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;
+  font-family:${st.brand.font};margin:0 auto
+}
+.sheet>*{position:absolute;margin:0}
+.sheet img{display:block}
+@media print{html,body{background:#fff}.sheet{margin:0}}
+</style></head>
+<body><div class="sheet">${body}</div></body></html>`;
+}
+
+function downloadBlob(blob, filename){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  return blob.size;
+}
+
+async function exportHTML(){
+  if(!state.photos.length){ setExportStatus('Add photos first.'); return; }
+  const btn = $('html');
+  btn.disabled = true;
+  const t0 = performance.now();
+  try{
+    setExportStatus('Building self-contained HTML…');
+    const html = await buildExportHTML(state, {
+      onProgress: (d, n) => setExportStatus(`Embedding photo ${d} of ${n}…`)
+    });
+    const size = downloadBlob(new Blob([html], {type: 'text/html'}),
+                              artboardLabel(state) + '.html');
+    setExportStatus(`Saved HTML · ${(size / 1048576).toFixed(1)} MB · `
+                  + `${Math.round(performance.now() - t0)} ms`);
+  }catch(e){
+    console.error('[collage] HTML export failed', e);
+    setExportStatus('HTML export failed — see console.');
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/** Print the exported sheet (not the app) so @page and the artboard agree. */
+async function exportPDF(){
+  if(!state.photos.length){ setExportStatus('Add photos first.'); return; }
+  const btn = $('pdf');
+  btn.disabled = true;
+  try{
+    setExportStatus('Preparing print sheet…');
+    const html = await buildExportHTML(state);
+    const frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;left:-12000px;top:0;width:10px;height:10px;border:0';
+    document.body.appendChild(frame);
+    await new Promise(res => { frame.onload = res; frame.srcdoc = html; });
+    const doc = frame.contentDocument;
+    await Promise.all([].slice.call(doc.images)
+      .map(im => (im.decode ? im.decode() : Promise.resolve()).catch(() => {})));
+    if(doc.fonts && doc.fonts.ready) await doc.fonts.ready;
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+    setExportStatus('Print dialog open — choose Save as PDF, margins None, '
+                  + 'background graphics on.');
+    setTimeout(() => frame.remove(), 120000);
+  }catch(e){
+    console.error('[collage] PDF export failed', e);
+    setExportStatus('PDF export failed — see console.');
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/* ============================================ PERSISTENCE (step 7) =======
+   Two IndexedDB stores, deliberately separate:
+     blobs  - the original files, keyed by CONTENT HASH, written once on import
+     state  - the layout snapshot, a few KB, autosaved debounced on every change
+
+   One store would mean rewriting tens of megabytes of photo on every
+   focal-point drag, which makes the tool unusable. The split is the whole point.
+   ========================================================================= */
+
+const DB_NAME = 'launchpad-collage', DB_VER = 1, SNAP_ID = 'current';
+let dbPromise = null;
+let persistOK = true;
+
+function openDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise((res, rej) => {
+    const rq = indexedDB.open(DB_NAME, DB_VER);
+    rq.onupgradeneeded = () => {
+      const db = rq.result;
+      if(!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs', {keyPath: 'hash'});
+      if(!db.objectStoreNames.contains('state')) db.createObjectStore('state', {keyPath: 'id'});
+    };
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror   = () => rej(rq.error);
+    rq.onblocked = () => rej(new Error('IndexedDB blocked'));
+  }).catch(e => { dbPromise = null; throw e; });
+  return dbPromise;
+}
+
+function idbDo(store, mode, fn){
+  return openDB().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(store, mode);
+    let out;
+    const rq = fn(tx.objectStore(store));
+    if(rq) rq.onsuccess = () => { out = rq.result; };
+    tx.oncomplete = () => res(out);
+    tx.onerror = tx.onabort = () => rej(tx.error || new Error('idb aborted'));
+  }));
+}
+const idbPut = (store, val) => idbDo(store, 'readwrite', s => s.put(val));
+const idbGet = (store, key) => idbDo(store, 'readonly',  s => s.get(key));
+const idbDel = (store, key) => idbDo(store, 'readwrite', s => s.delete(key));
+
+/** Content hash, so re-dropping the same photo reuses one stored blob.
+ *  crypto.subtle needs a secure context; file:// qualifies in Chrome, but fall
+ *  back to a cheap content digest rather than losing dedupe entirely. */
+async function contentHash(blob){
+  const buf = await blob.arrayBuffer();
+  if(crypto && crypto.subtle && crypto.subtle.digest){
+    try{
+      const d = await crypto.subtle.digest('SHA-256', buf);
+      return Array.from(new Uint8Array(d)).slice(0, 16)
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+    }catch(e){ /* fall through */ }
+  }
+  const v = new Uint8Array(buf);
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  const step = Math.max(1, Math.floor(v.length / 8192));
+  for(let i = 0; i < v.length; i += step){
+    h1 = Math.imul(h1 ^ v[i], 16777619) >>> 0;
+    h2 = Math.imul(h2 + v[i] + i, 2246822519) >>> 0;
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')
+        + v.length.toString(16)).slice(0, 32);
+}
+
+/** Everything needed to rebuild the board, minus the pixels. A few KB. */
+function serializeState(st){
+  return {
+    format: 'launchpad-collage', v: 1, savedAt: new Date().toISOString(),
+    artboard: {...st.artboard},
+    grid: {...st.grid},
+    space: {...st.space},
+    chrome: {...st.chrome},
+    text: {...st.text},
+    brand: {...st.brand},
+    photos: st.photos.map(p => ({
+      id: p.id, name: p.name, hash: p.hash, w: p.w, h: p.h,
+      focal: {...p.focal}, zoom: p.zoom, span: {...p.span}
+    }))
+  };
+}
+
+/** Apply a snapshot's non-photo settings. Missing keys keep their defaults, so
+ *  a file written by an older build still loads. */
+function applySettings(snap){
+  if(snap.artboard) Object.assign(state.artboard, snap.artboard);
+  if(snap.grid)   Object.assign(state.grid,   snap.grid);
+  if(snap.space)  Object.assign(state.space,  snap.space);
+  if(snap.chrome) Object.assign(state.chrome, snap.chrome);
+  if(snap.text)   Object.assign(state.text,   snap.text);
+  if(snap.brand)  Object.assign(state.brand,  snap.brand);
+}
+
+let saveTimer = null;
+/* Autosave stays disarmed until the startup restore decision is made. Without
+   this the first renderPreview() on a cold load would save an EMPTY board over
+   the snapshot the user was about to be offered. */
+let autosaveArmed = false;
+function armAutosave(){ autosaveArmed = true; }
+function scheduleSave(){
+  if(!persistOK || !autosaveArmed) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try{
+      await idbPut('state', {id: SNAP_ID, ...serializeState(state)});
+      setSaveNote(`Autosaved ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`);
+    }catch(e){
+      persistOK = false;
+      console.warn('[collage] autosave unavailable', e);
+      setSaveNote('Autosave unavailable in this browser session.');
+    }
+  }, 600);   // debounced: a focal drag fires dozens of changes a second
+}
+
+function setSaveNote(msg){ const el = $('savenote'); if(el) el.textContent = msg || ''; }
+
+/** Rebuild photos from a snapshot, sourcing pixels from `getBlob(hash)`. */
+async function hydratePhotos(snap, getBlob){
+  const photos = [], missing = [];
+  for(const sp of (snap.photos || [])){
+    let blob = null;
+    try{ blob = await getBlob(sp.hash, sp); }catch(e){ blob = null; }
+    if(!blob){ missing.push(sp.name || sp.hash); continue; }
+    try{
+      const p = await makePhoto(blob, sp.name || 'photo', sp.hash);
+      p.id = sp.id || p.id;
+      if(sp.focal) p.focal = {...sp.focal};
+      if(typeof sp.zoom === 'number') p.zoom = sp.zoom;
+      if(sp.span) p.span = {...sp.span};
+      photos.push(p);
+    }catch(e){ missing.push(sp.name || sp.hash); }
+  }
+  return {photos, missing};
+}
+
+/** Keep generated ids clear of restored ones. */
+function bumpUid(photos){
+  let max = 0;
+  for(const p of photos){
+    const m = /^p(\d+)$/.exec(p.id || '');
+    if(m) max = Math.max(max, +m[1]);
+  }
+  uidFloor(max);
+}
+
+async function restoreSession(snap){
+  const {photos, missing} = await hydratePhotos(snap, async hash => {
+    const rec = await idbGet('blobs', hash);
+    return rec ? rec.blob : null;
+  });
+  applySettings(snap);
+  state.photos = photos;
+  bumpUid(photos);
+  renderThumbs(); syncControls();
+  setArtboard(state.artboard.w, state.artboard.h, state.artboard.presetId);
+  return missing;
+}
+
+const blobToDataURL = b => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(fr.result);
+  fr.onerror = rej;
+  fr.readAsDataURL(b);
+});
+
+async function saveProject(withPhotos){
+  if(!state.photos.length){ setSaveNote('Nothing to save yet.'); return; }
+  const btn = $('saveproj');
+  btn.disabled = true;
+  try{
+    setSaveNote(withPhotos ? 'Packing photos…' : 'Writing layout…');
+    const snap = serializeState(state);
+    if(withPhotos){
+      for(let i = 0; i < snap.photos.length; i++){
+        const p = state.photos[i];
+        if(p && p.file) snap.photos[i].data = await blobToDataURL(p.file);
+      }
+    }
+    const json = JSON.stringify(snap);
+    const size = downloadBlob(new Blob([json], {type: 'application/json'}),
+                              artboardLabel(state) + '.collage.json');
+    setSaveNote(`Saved project · ${(size / 1048576).toFixed(2)} MB`
+              + (withPhotos ? ' (photos included)' : ' (layout only)'));
+  }catch(e){
+    console.error('[collage] save failed', e);
+    setSaveNote('Save failed — see console.');
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function loadProject(file){
+  try{
+    setSaveNote('Reading project…');
+    const snap = JSON.parse(await file.text());
+    if(snap.format !== 'launchpad-collage'){
+      setSaveNote('That is not a collage project file.');
+      return;
+    }
+    const {photos, missing} = await hydratePhotos(snap, async (hash, sp) => {
+      if(sp.data) return await (await fetch(sp.data)).blob();   // full save
+      const rec = await idbGet('blobs', hash).catch(() => null); // layout-only
+      return rec ? rec.blob : null;
+    });
+    applySettings(snap);
+    state.photos = photos;
+    bumpUid(photos);
+    // a layout-only file reopened elsewhere has no pixels to find
+    for(const p of photos){
+      try{ await idbPut('blobs', {hash: p.hash, blob: p.file, name: p.name}); }catch(e){}
+    }
+    renderThumbs(); syncControls();
+    setArtboard(state.artboard.w, state.artboard.h, state.artboard.presetId);
+    setSaveNote(missing.length
+      ? `Loaded, but ${missing.length} photo(s) were not in the file: ${missing.slice(0,3).join(', ')}`
+      : `Loaded ${photos.length} photo(s).`);
+    scheduleSave();
+  }catch(e){
+    console.error('[collage] load failed', e);
+    setSaveNote('Could not read that project file.');
+  }
+}
+
+/* ==================================================== photo ingestion ==== */
+
+/** Downscaled preview bitmap (fast DOM + fast dragging); the original File is
+ *  retained untouched so the step-2 canvas export can draw at full resolution. */
+async function makePhoto(file, name, hash){
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+  const pw = Math.max(1, Math.round(bmp.width * k)), ph = Math.max(1, Math.round(bmp.height * k));
+  const c = document.createElement('canvas'); c.width = pw; c.height = ph;
+  c.getContext('2d').drawImage(bmp, 0, 0, pw, ph);
+  const photo = {
+    id: uid(), name: name || file.name || 'photo', file,
+    hash: hash || null,
+    url: c.toDataURL('image/jpeg', 0.92),
+    w: bmp.width, h: bmp.height, pw, ph,
+    focal: {x:50, y:50}, zoom: 1, span: {c:1, r:1}
+  };
+  bmp.close && bmp.close();
+  return photo;
+}
+
+async function addFiles(list){
+  const files = [...list].filter(f => /^image\//.test(f.type));
+  if(!files.length) return;
+  const room = MAX_PHOTOS - state.photos.length;
+  const take = files.slice(0, Math.max(0, room));
+  for(const f of take){
+    try{
+      const hash = await contentHash(f).catch(() => null);
+      state.photos.push(await makePhoto(f, f.name, hash));
+      // blobs are written ONCE, here - never on a layout change
+      if(hash && persistOK){
+        try{ await idbPut('blobs', {hash, blob: f, name: f.name}); }
+        catch(e){ persistOK = false; console.warn('[collage] blob store unavailable', e); }
+      }
+    }
+    catch(e){ console.error('[collage] could not decode', f.name, e); }
+  }
+  renderThumbs();
+  renderPreview();
+  scheduleSave();
+  if(files.length > take.length) flashCap(`${files.length - take.length} photo(s) skipped — ${MAX_PHOTOS} is the cap.`);
+}
+
+function renderThumbs(){
+  $('count').textContent = state.photos.length ? `${state.photos.length}/${MAX_PHOTOS}` : '';
+  $('thumbs').innerHTML = state.photos.map((p,i) =>
+    `<div class="th" title="${p.name} · ${p.w}×${p.h}">`
+    + `<img src="${p.url}" alt="">`
+    + `<span class="n">${i+1}</span>`
+    + `<button class="x" data-del="${p.id}" title="Remove">×</button></div>`
+  ).join('');
+  updateCapNote();
+}
+
+function updateCapNote(extra){
+  const area = state.artboard.w * state.artboard.h;
+  const msgs = [];
+  if(extra) msgs.push(extra);
+  if(state.photos.length > WARN_PHOTOS && area >= BIG_AREA){
+    msgs.push(`${state.photos.length} photos at ${state.artboard.w}×${state.artboard.h} — full-resolution export will be slow. Not blocked.`);
+  }
+  const soft = state.photos.filter(p => Math.max(p.w,p.h) < 900);
+  if(soft.length && area >= BIG_AREA){
+    msgs.push(`${soft.length} photo(s) under 900 px may look soft at this print size.`);
+  }
+  $('cap').innerHTML = msgs.map(m => `<div class="warn">${m}</div>`).join('');
+}
+let capTimer;
+function flashCap(msg){
+  updateCapNote(msg);
+  clearTimeout(capTimer);
+  capTimer = setTimeout(updateCapNote, 6000);
+}
+
+/* ================================================================ wiring == */
+
+function buildPresetSelect(){
+  const sel = $('preset');
+  let last = null, html = '';
+  for(const p of PRESETS){
+    if(p.g !== last){ if(last) html += '</optgroup>'; html += `<optgroup label="${p.g}">`; last = p.g; }
+    html += `<option value="${p.id}">${p.label} — ${p.w}×${p.h}</option>`;
+  }
+  html += '</optgroup><option value="custom">Custom…</option>';
+  sel.innerHTML = html;
+  sel.value = state.artboard.presetId;
+}
+
+function setArtboard(w, h, presetId){
+  state.artboard.w = clamp(Math.round(w), 120, 8000);
+  state.artboard.h = clamp(Math.round(h), 120, 8000);
+  state.artboard.presetId = presetId;
+  $('aw').value = state.artboard.w;
+  $('ah').value = state.artboard.h;
+  $('preset').value = presetId;
+  updateCapNote();
+  renderPreview();
+}
+
+function syncControls(){
+  $('template').value = state.grid.template;
+  $('colsrow').hidden = state.grid.template !== 'manual';
+  $('cols').value = state.grid.cols;   $('colsv').textContent = state.grid.cols;
+  $('gutter').value = state.space.gutterPct; $('gutterv').textContent = state.space.gutterPct + '%';
+  $('outer').value  = state.space.outerPct;  $('outerv').textContent  = state.space.outerPct + '%';
+  $('radius').value = state.space.radiusPct; $('radiusv').textContent = state.space.radiusPct + '%';
+  $('matcolor').value = state.space.matColor;
+
+  const c = state.chrome, mode = c.mode;
+  $('chrome').value = mode;
+  $('side').value = c.side;
+  $('bandfill').value = c.fill;
+  $('bandpct').value = c.bandPct; $('bandpctv').textContent = c.bandPct + '%';
+  $('cellat').value = c.cellAt;
+  $('corner').value = c.corner;
+  $('scrim').value = c.scrimPct; $('scrimv').textContent = c.scrimPct + '%';
+
+  /* the mark-size slider edits whichever measure the current mode uses:
+     band = height as % of the band, overlay = width as % of the artboard */
+  const inBand = mode === 'band';
+  const sz = $('marksize');
+  sz.min = inBand ? 20 : 12;
+  sz.max = inBand ? 94 : 70;
+  sz.value = inBand ? c.bandMarkPct : c.sizePct;
+  $('marksizev').textContent = Math.round(inBand ? c.bandMarkPct : c.sizePct) + '%';
+  // the slider means different things per mode, so the label must say which
+  $('marksizelbl').textContent = inBand ? 'Logo height' : 'Logo width';
+  sz.title = inBand
+    ? 'Logo height as a percentage of the band height'
+    : 'Logo width as a percentage of the artboard width';
+
+  // only show controls that apply to the chosen placement
+  $('siderow').hidden    = mode !== 'band';
+  $('bandpctrow').hidden = mode !== 'band';
+  $('fillrow').hidden    = !(mode === 'band' || mode === 'cell');
+  $('cellatrow').hidden  = mode !== 'cell';
+  $('cornerrow').hidden  = mode !== 'overlay' || c.placed;
+  $('sizerow').hidden    = !(mode === 'band' || mode === 'overlay');
+  $('scrimrow').hidden   = mode !== 'overlay';
+
+  $('marknote').textContent =
+    mode === 'none'    ? 'No brand mark on the artboard.'
+    : mode === 'cell'  ? 'The mark occupies a real grid cell; drag-to-swap reorders around it.'
+    : mode === 'overlay'
+      ? (c.placed
+          ? `Placed by hand at ${Math.round(c.markX)}% / ${Math.round(c.markY)}% — double-click the logo to snap back to a corner.`
+          : 'Drag the logo on the artboard to place it freely.')
+      : 'Drag the logo along the band; drag its orange dot to resize.';
+
+  $('cdark').value   = state.brand.dark;   $('cdarkv').textContent   = state.brand.dark.toUpperCase();
+  $('caccent').value = state.brand.accent; $('caccentv').textContent = state.brand.accent.toUpperCase();
+  $('clight').value  = state.brand.light;  $('clightv').textContent  = state.brand.light.toUpperCase();
+  $('onaccent').value = state.brand.onAccent;
+  const ff = state.brand.fontFile;
+  $('fontfile').textContent = ff ? 'Remove embedded font' : 'Embed font file…';
+  $('fontfilev').textContent = ff ? (ff.bytes / 1024).toFixed(0) + ' KB' : '';
+  $('fontfile').title = ff
+    ? 'Embedded: ' + ff.name
+    : 'Optional: embed a .woff2/.ttf so the exported HTML keeps its type on any machine';
+  $('headline').value = state.text.headline;
+  $('subhead').value  = state.text.subhead;
+  $('font').value = fontKeyOf(state.brand.font);
+
+  const hasCopy = !!(state.text.headline.trim() || state.text.subhead.trim());
+  $('textnote').textContent =
+    mode !== 'band'
+      ? 'Band copy only shows with the Band placement.'
+      : !hasCopy
+        ? 'Type a headline to add copy beside the logo. It auto-fits to the band.'
+        : 'Copy takes the wider side of the band — drag the logo to swap sides.';
+
+  const lp = BRAND_PRESETS.launchpad;
+  const offBrand = state.brand.dark !== lp.dark || state.brand.accent !== lp.accent
+                || state.brand.light !== lp.light;
+  $('brandnote').textContent = state.brand.logo
+    ? `Custom logo: ${state.brand.logo.name} — the LaunchPad lockup is replaced.`
+    : offBrand
+      ? 'Palette overridden — no longer LaunchPad brand colours.'
+      : 'LaunchPad palette. The LAUNCHPAD wordmark stays locked to the Libraries logo.';
+}
+
+function wire(){
+  buildPresetSelect();
+  syncControls();
+
+  $('preset').onchange = e => {
+    const p = PRESETS.find(x => x.id === e.target.value);
+    if(p) setArtboard(p.w, p.h, p.id); else setArtboard(state.artboard.w, state.artboard.h, 'custom');
+  };
+  const custom = () => setArtboard(+$('aw').value || 1080, +$('ah').value || 1080, 'custom');
+  $('aw').onchange = custom; $('ah').onchange = custom;
+
+  // drop zone
+  const drop = $('drop');
+  const picker = Object.assign(document.createElement('input'),
+    {type:'file', accept:'image/*', multiple:true});
+  picker.style.display = 'none'; document.body.appendChild(picker);
+  drop.onclick = () => picker.click();
+  picker.onchange = () => { addFiles(picker.files); picker.value = ''; };
+  for(const ev of ['dragenter','dragover']) drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.add('hot');
+  });
+  for(const ev of ['dragleave','drop']) drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.remove('hot');
+  });
+  drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+  // whole window accepts drops too, without navigating away
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => {
+    e.preventDefault();
+    if(!drop.contains(e.target)) addFiles(e.dataTransfer.files);
+  });
+
+  $('thumbs').onclick = e => {
+    const id = e.target.dataset && e.target.dataset.del;
+    if(!id) return;
+    state.photos = state.photos.filter(p => p.id !== id);
+    renderThumbs(); renderPreview();
+  };
+
+  const bind = (id, fn) => { const el = $(id); el.oninput = () => { fn(el); syncControls(); renderPreview(); }; };
+  bind('template', el => { state.grid.template = el.value; });
+  bind('cols',     el => { state.grid.cols = +el.value; });
+  bind('gutter',   el => { state.space.gutterPct = +el.value; });
+  bind('outer',    el => { state.space.outerPct = +el.value; });
+  bind('radius',   el => { state.space.radiusPct = +el.value; });
+  bind('matcolor', el => { state.space.matColor = el.value; });
+  bind('chrome',   el => { state.chrome.mode = el.value; });
+  bind('side',     el => { state.chrome.side = el.value; });
+  bind('bandfill', el => { state.chrome.fill = el.value; });
+  bind('bandpct',  el => { state.chrome.bandPct = +el.value; });
+  bind('cellat',   el => { state.chrome.cellAt = el.value; });
+  bind('corner',   el => { state.chrome.corner = el.value; state.chrome.placed = false; });
+  bind('scrim',    el => { state.chrome.scrimPct = +el.value; });
+  bind('marksize', el => {
+    if(state.chrome.mode === 'band') state.chrome.bandMarkPct = +el.value;
+    else state.chrome.sizePct = +el.value;
+  });
+  bind('cdark',    el => { state.brand.dark = el.value; });
+  bind('caccent',  el => { state.brand.accent = el.value; });
+  bind('clight',   el => { state.brand.light = el.value; });
+  bind('onaccent', el => { state.brand.onAccent = el.value; });
+  bind('headline', el => { state.text.headline = el.value; });
+  bind('subhead',  el => { state.text.subhead = el.value; });
+  bind('font',     el => { state.brand.font = (FONTS[el.value] || FONTS.sherman).stack; });
+
+  /* Replace the mark with an uploaded logo. Its aspect ratio comes from the
+     file, so a non-7.66:1 logo is placed correctly rather than stretched. */
+  const logoPicker = Object.assign(document.createElement('input'),
+    {type:'file', accept:'image/*'});
+  logoPicker.style.display = 'none';
+  document.body.appendChild(logoPicker);
+  $('logo').onclick = () => logoPicker.click();
+  logoPicker.onchange = async () => {
+    const f = logoPicker.files && logoPicker.files[0];
+    logoPicker.value = '';
+    if(!f) return;
+    try{
+      const url = await new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.onerror = rej;
+        fr.readAsDataURL(f);
+      });
+      const img = await loadImage(url);
+      const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+      if(!iw || !ih) throw new Error('no intrinsic size');
+      state.brand.logo = {url, ratio: iw / ih, name: f.name};
+      syncControls(); renderPreview();
+      setHint(`Logo replaced (${iw}×${ih})`, 2600);
+    }catch(err){
+      console.error('[collage] logo load failed', err);
+      setHint('Could not read that logo file', 3000);
+    }
+  };
+
+  $('brandreset').onclick = () => {
+    const lp = BRAND_PRESETS.launchpad;
+    state.brand = {preset:'launchpad', dark:lp.dark, accent:lp.accent, light:lp.light,
+                   wordmarkLight:lp.wordmarkLight, wordmarkDark:lp.wordmarkDark,
+                   logo:null, onAccent:'mono', font:BRAND.font, fontFile:null};
+    syncControls(); renderPreview();
+    setHint('Brand reset to LaunchPad', 2000);
+  };
+
+  $('png').onclick = exportPNG;
+  $('html').onclick = exportHTML;
+  $('pdf').onclick = exportPDF;
+
+  /* Optional @font-face embed for the exported HTML. The browser cannot read an
+     installed system font, so portability needs the actual file. Off unless the
+     user supplies one - embedding a licensed SU face in a shared file is their
+     call, not the tool's. */
+  const fontPicker = Object.assign(document.createElement('input'),
+    {type:'file', accept:'.woff2,.woff,.ttf,.otf,font/*'});
+  fontPicker.style.display = 'none';
+  document.body.appendChild(fontPicker);
+  $('fontfile').onclick = () => {
+    if(state.brand.fontFile){
+      state.brand.fontFile = null;
+      syncControls();
+      setExportStatus('Font embed removed - exports will use the fallback stack.');
+      return;
+    }
+    fontPicker.click();
+  };
+  fontPicker.onchange = async () => {
+    const f = fontPicker.files && fontPicker.files[0];
+    fontPicker.value = '';
+    if(!f) return;
+    try{
+      const url = await new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.onerror = rej;
+        fr.readAsDataURL(f);
+      });
+      state.brand.fontFile = {url, name: f.name, bytes: f.size};
+      syncControls();
+      setExportStatus(`Will embed ${f.name} (${(f.size/1024).toFixed(0)} KB) in exported HTML.`);
+    }catch(err){
+      console.error('[collage] font read failed', err);
+      setExportStatus('Could not read that font file.');
+    }
+  };
+
+  $('saveproj').onclick = () => saveProject($('savemode').value === 'full');
+
+  const projPicker = Object.assign(document.createElement('input'),
+    {type:'file', accept:'.json,application/json'});
+  projPicker.style.display = 'none';
+  document.body.appendChild(projPicker);
+  $('loadproj').onclick = () => projPicker.click();
+  projPicker.onchange = () => {
+    const f = projPicker.files && projPicker.files[0];
+    projPicker.value = '';
+    if(f) loadProject(f);
+  };
+
+  wireInteraction();
+
+  $('reset').onclick = () => {
+    state.grid  = {template:'auto', cols:4};
+    state.space = {gutterPct:1.5, outerPct:1.5, radiusPct:0, matColor:'dark'};
+    state.chrome = {mode:'band', side:'bottom', fill:'dark', bandPct:14, cellAt:'end',
+                    corner:'bl', scrimPct:80, bandMarkPct:52, sizePct:30,
+                    markX:50, markY:50, placed:false};
+    for(const p of state.photos){ p.focal = {x:50,y:50}; p.zoom = 1; p.span = {c:1,r:1}; }
+    syncControls(); renderPreview();
+  };
+
+  addEventListener('resize', renderPreview);
+}
+
+/* Fonts must be ready before the first layout: measureText-based auto-fit
+   (step 5) would otherwise size against Helvetica on a cold load — right in
+   the export, subtly wrong in the preview. Await it from the start. */
+async function offerRestore(){
+  let snap = null;
+  try{ snap = await idbGet('state', SNAP_ID); }
+  catch(e){
+    persistOK = false;
+    console.warn('[collage] IndexedDB unavailable', e);
+    setSaveNote('Autosave unavailable in this browser session.');
+  }
+  if(!snap || !snap.photos || !snap.photos.length){ armAutosave(); return; }
+
+  const when = snap.savedAt ? new Date(snap.savedAt) : null;
+  $('restoremeta').textContent =
+    `${snap.photos.length} photo${snap.photos.length === 1 ? '' : 's'} · `
+    + `${snap.artboard ? snap.artboard.w + '×' + snap.artboard.h : 'custom'}`
+    + (when ? ` · ${when.toLocaleString()}` : '');
+  $('restore').hidden = false;
+
+  const finish = () => { $('restore').hidden = true; armAutosave(); };
+  $('dorestore').onclick = async () => {
+    $('dorestore').disabled = true;
+    setSaveNote('Restoring…');
+    try{
+      const missing = await restoreSession(snap);
+      setSaveNote(missing.length
+        ? `Restored, but ${missing.length} photo(s) could not be read back.`
+        : `Restored ${state.photos.length} photo(s).`);
+    }catch(e){
+      console.error('[collage] restore failed', e);
+      setSaveNote('Could not restore that session.');
+    }
+    $('dorestore').disabled = false;
+    finish();
+  };
+  $('discard').onclick = async () => {
+    try{ await idbDel('state', SNAP_ID); }catch(e){}
+    setSaveNote('Started fresh.');
+    finish();
+  };
+}
+
+(async () => {
+  wire();
+  setArtboard(state.artboard.w, state.artboard.h, state.artboard.presetId);
+  try{ await document.fonts.ready; }catch(e){}
+  renderPreview();
+  await offerRestore();
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = `700 40px ${BRAND.font}`;
+  const a = probe.measureText('LAUNCHPAD').width;
+  probe.font = '700 40px Helvetica, Arial, sans-serif';
+  console.log('[collage] Sherman Sans active:', Math.abs(a - probe.measureText('LAUNCHPAD').width) > 0.5);
+})();
+</script>
+</body>
+</html>
